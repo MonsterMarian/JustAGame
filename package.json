@@ -2,18 +2,28 @@
   "name": "make-your-cpu",
   "productName": "Make Your CPU",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tovární hra v otevřeném světě: od osazování desek po vlastní CPU z písku. Skutečné stroje, postupy a ceny.",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.monstermarian.makeyourcpu",
+    "productName": "Make Your CPU",
+    "files": ["index.html", "style.css", "src/**", "data/**", "electron/**", "package.json"],
+    "onNodeModuleFile": "tools/builder-include.cjs",
+    "win": { "target": "portable", "artifactName": "MakeYourCPU-${version}.exe" },
+    "publish": { "provider": "github", "owner": "MonsterMarian", "repo": "JustAGame", "releaseType": "release" }
   },
   "dependencies": {
     "three": "^0.187.0"
   },
   "devDependencies": {
-    "electron": "^45.2.3"
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
   }
 }

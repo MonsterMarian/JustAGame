@@ -34,7 +34,7 @@ const reqName = (req) => [req].flat().map((r) => RESEARCH.find((x) => x.id === r
 // marže jedné dávky, když se všechny díly koupí na Trhu (bez elektřiny)
 const margin = (r) => { const e = econ(r), m = e.out - e.parts - e.opex; return e.out ? h('span', { class: m < 0 ? 'warn' : '' }, `${m < 0 ? 'ztráta' : 'zisk'} ${fmt(Math.abs(m))} na dávku`) : 'lot waferů se neprodává, zpracuje ho pouzdření'; };
 
-let stockSig = null, goalSig = '';
+let stockSig = null, goalSig = '', dealSig = '';
 let api, cat = 'Osazování', modal = null, panelDyn = null, viewer = null, drag = null, lastSlow = 0, lastMini = 0, lastCoin = 0;
 const keys = new Set(), sales = new Map();
 
@@ -162,6 +162,11 @@ function barsOf(s, b) {
     row(`Těžba ${run ? num(m.rate * bo * 24, 1) : 0} t za den` + (b.oi ? ` · ${ORES[b.oi].name}` : '') + ` (${num(m.rate * (1 + 0.5 * (b.lv ?? 0)), 2)} t za hodinu práce)`, run ? 1 : 0, 'var(--ok)');
     row(`Hromada ${b.out.length} z ${sim.PILE} t`, b.out.length / sim.PILE);
     row(`Ložisko v dosahu: zbývá ${num(left)} t`, left > 0 ? 1 : 0, '#8a6a45');
+  } else if (KINDS[m.kind].cat === 'Suroviny' && ROUTES[b.prod]?.power) { // elektrárna: uhlí, výkon a zásobník proudu
+    const cap = sim.capOf(b);
+    for (const it in cap) row(`${short(it)} ${Math.floor(b.buf[it] ?? 0)} z ${cap[it]} t`, (b.buf[it] ?? 0) / cap[it], '#6f9be0');
+    row(`Výkon ${run ? num(m.rate * bo, 2) : 0} MW průměrně (${num(m.rate, 0)} MW při práci) · spálí ${num(m.rate * bo * 24 * ROUTES.power.ops[0].in.coal, 1)} t uhlí za den`, run ? 1 : 0, 'var(--ok)');
+    row(`Zásobník proudu ${num(s.mwh, 1)} z ${sim.GRID_MWH} MWh · přebytek se prodává do sítě`, s.mwh / sim.GRID_MWH);
   } else if (KINDS[m.kind].cat === 'Suroviny' && ROUTES[b.prod]?.out) {
     const cap = sim.capOf(b);
     for (const it in cap) row(`${short(it)} ${Math.floor(b.buf[it] ?? 0)} z ${cap[it]} t`, (b.buf[it] ?? 0) / cap[it], '#6f9be0');
@@ -255,7 +260,7 @@ function bindInput() {
     else if (k === ' ') { e.preventDefault(); setSpeed(G.speed ? 0 : G.lastSpeed); }
     else if ('1234'.includes(k)) setSpeed([1, 3, 10, 30][+k - 1]);
     else if (k === 'h') home();
-    else if (k === 'm') openModal('market'); else if (k === 'c') openModal('chips'); else if (k === 'v') openModal('research'); else if (k === 'p') openModal('routes');
+    else if (k === 'm') openModal('market'); else if (k === 'c') openModal('chips'); else if (k === 'v') openModal('research'); else if (k === 'p') openModal('routes'); else if (k === 'i') openModal('stats');
   });
   addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   addEventListener('blur', () => keys.clear());
@@ -293,7 +298,7 @@ function select(b) {
     const t = BUYERS[b.t], rows = h('div', { class: 'specs' });
     panelDyn = () => rows.replaceChildren(...t.buys.map((it) => kv(ITEMS[it].name, `${fmt(sim.priceNow(s, it, b.mul))} za tunu`)));
     p.replaceChildren(h('header', null, h('h3', null, b.name), close), h('p', null, `Odběratel na mapě. ${t.what}`), h('h4', null, 'Vykupuje'), rows,
-      h('p', { class: 'dim' }, `Platí ${Math.round(b.mul * 100)} % ceníkové ceny. Když prodáš víc, než trh za den pobere, cena klesá. Suroviny sem vozí auta: postav silnici od dolu až sem, klikni na důl a kup mu auto.`));
+      h('p', { class: 'dim' }, `Platí ${Math.round(b.mul * 100)} % ceníkové ceny. Když prodáš víc, než trh za den pobere, cena klesá. Suroviny sem vozí auta: postav silnici od dolu až sem, auta se koupí a přijedou sama.`));
   } else if (b.k === 'hub') {
     const list = h('div', { class: 'inv' });
     panelDyn = () => list.replaceChildren(...Object.keys(s.inv).filter((it) => s.inv[it] >= 1 && ITEMS[it]).sort((x, y) => ITEMS[x].cat.localeCompare(ITEMS[y].cat, 'cs')).map((it) => h('div', { title: ITEMS[it].name }, icon(it, 20), h('span', null, ITEMS[it].name), h('b', null, num(Math.floor(s.inv[it]))))));
@@ -323,6 +328,17 @@ function machinePanel(p, s, b, close, demolish) {
   let crewSig = '';
   const parts = [h('header', null, icon(b.model, 40), h('div', null, h('h3', null, m.name), h('div', { class: 'dim' }, `${kd.name} · ${TIER[m.tier]}`)), close), st, h('div', { class: 'bar' }, bar), barBox];
   if (m.crew) parts.push(h('h4', null, 'Lidé a vylepšení'), crewBox);
+  const maintBox = h('div');
+  let maintSig = '';
+  parts.push(h('h4', null, 'Poruchy a údržba'), maintBox);
+  const maintDyn = () => { // tlačítko se překreslí jen při změně, jinak by klik propadl
+    const left = b.mtbf ? Math.max(0, b.mtbf - (b.wear ?? 0)) : null, sig = [b.mt, b.fails, b.st === 'broken', left && Math.round(left / 10)].join();
+    if (sig === maintSig) return;
+    maintSig = sig;
+    maintBox.replaceChildren(
+      h('div', { class: 'dim' }, `Stroj se občas porouchá a oprava trvá ${sim.FIX_H} h a stojí ${fmt(sim.repairCost(b))}. Poruch zatím: ${b.fails ?? 0}.${left != null ? ` Další asi za ${num(left)} h práce.` : ''} Údržbář je jeden člověk na každou odpracovanou směnu (${fmt(sim.WAGE_DAY)}) a poruchy jsou s ním třikrát řidší. Doby jsou herní hodnoty.`),
+      h('button', { 'data-maint': 1, class: b.mt ? '' : 'primary', onclick: () => { sim.setMaint(s, b, !b.mt); toast(b.mt ? 'Údržbář nastoupil: poruchy budou třikrát řidší' : 'Údržbář odešel', b.mt ? 'ok' : ''); maintSig = ''; panelDyn(); } }, b.mt ? 'Propustit údržbáře' : 'Najmout údržbáře'));
+  };
   const crewDyn = () => { // tlačítka se překreslí, jen když se něco změnilo (jinak by klik mohl propadnout)
     const n = sim.staffed(b), up = sim.upgradeCost(b), sw = sim.swaps(s, b), sig = [n, b.lv, up && s.money >= up, ...sw.map((f) => f.id + !sim.swapErr(s, b, f.id))].join();
     if (sig === crewSig) return;
@@ -338,7 +354,7 @@ function machinePanel(p, s, b, close, demolish) {
   let age = 0, opts = [], sig = '';
   const dest = h('select', { onchange: (e) => { const t = opts[+e.target.value]; b.to = t ? [t.x, t.y] : null; b.auto = !t; b._sv = null; age = 0; } }); // ruční volba vypne automatiku
   const nameOf = (t) => t.name ?? (t.model ? MODELS[t.model].name.split(':')[0] : t.hq ? 'Sklad' : 'Logistické depo');
-  const hauls = (b.k === 'miner' && m.kind !== 'm_drill') || (b.k === 'machine' && kd.cat === 'Suroviny'); // auta patří dolům, pecím a hutím
+  const hauls = (b.k === 'miner' && m.kind !== 'm_drill') || (b.k === 'machine' && kd.cat === 'Suroviny' && !ROUTES[b.prod]?.power); // auta patří dolům, pecím a hutím; elektrárna nic neodváží
   const refreshHaul = () => {
     const list = sim.sinks(s, b), cur = b.to && list.find((x) => x.t === sim.at(s, b.to[0], b.to[1])), direct = b._adj?.hub || b._adj?.npc || b._adj?.mach?.length;
     const txt = list.map((x) => `${short(x.it)} → ${nameOf(x.t)} · ${x.t.k === 'machine' ? 'vlastní výroba' : `${fmt(x.usd)} za tunu`} · ${x.path ? `${x.path.length} m po silnici` : 'nevede tam silnice'}`), key = txt.join('|') + (cur ? list.indexOf(cur) : -1) + (b.auto !== false);
@@ -350,7 +366,8 @@ function machinePanel(p, s, b, close, demolish) {
     haul.replaceChildren(h('div', { class: 'dim' }, `Na hromadě ${b.out.length} t z ${sim.PILE} t.`),
       direct ? h('div', { class: 'dim' }, 'Stojí těsně u jiné budovy a předává jí rovnou, auta nepotřebuje.')
         : !list.some((x) => x.path) ? h('div', { class: 'warn' }, 'Nevede odsud žádná silnice k cíli. V záložce Doprava vyber cestu, klikni sem a pak na cíl (Sklad, pec, odběratel).')
-          : h('div', { class: 'dim' }, `Auta jezdí sama (nejvýš ${sim.MAXCARS}). Před každou jízdou si vyberou cíl: nejdřív vlastní výroba, která má místo, jinak nejlepší cena.`),
+          : b.carWait ? h('div', { class: 'warn' }, `Na první auto chybí peníze (ojetý pick-up stojí ${fmt(CARS.car_pickup.usd)}). Koupí se samo, jakmile budou.`)
+            : h('div', { class: 'dim' }, `Auta se kupují a jezdí sama (nejvýš ${sim.MAXCARS}); další auto se koupí, jen když po nákupu zůstane aspoň tolik, kolik stálo. Nafta a servis: ${[...new Set((cars.length ? cars : [{ m: 'car_pickup' }]).map((c) => `${num(CARS[c.m].km, 2)} $/km`))].join(', ')}. Před každou jízdou si auto vybere cíl: nejdřív vlastní výroba, která má místo, jinak nejlepší cena.`),
       ...cars.map((c) => { const d = c.to && sim.at(s, c.to[0], c.to[1]); return h('div', { class: 'kv' }, h('span', null, CARS[c.m].name), h('b', null, c.dir > 0 ? `veze ${c.n} t${d ? ' → ' + nameOf(d) : ''}` : c.dir < 0 ? 'vrací se' : c.n >= CARS[c.m].cap ? 'čeká: cíl má plno' : `nakládá ${c.n} z ${CARS[c.m].cap} t`)); }));
   };
   if (b.k === 'miner') { // co je v dosahu: na povrchu, nebo v patrech, kam už vrt či důl došel
@@ -397,7 +414,7 @@ function machinePanel(p, s, b, close, demolish) {
   if (hauls && b.k === 'machine') parts.push(h('h4', null, 'Odvoz'), haul, h('label', null, 'Kam auta vozí', dest),
     null);
   parts.push(h('h4', null, 'Stroj'), kv('Cena', fmt(m.usd), ' ', badge(m), ' ', link(m.src)), m.note && h('div', { class: 'dim' }, m.note),
-    kv('Výkon', `${num(m.rate, m.rate < 10 ? 2 : 0)} ${m.crew ? 't za hodinu práce' : UNIT[kd.u]}`, m.crew ? [' ', badge({ fact: m.rateFact, note: 'výkon stroje' })] : ''), m.kw > 0 && kv('Příkon', `${num(m.kw, 1)} kW`), kv('Půdorys', `${m.w} × ${m.h} m`),
+    kv('Výkon', `${num(m.rate, m.rate < 10 ? 2 : 0)} ${kd.u === 't' && m.crew ? 't za hodinu práce' : UNIT[kd.u]}`, kd.cat === 'Suroviny' && m.crew ? [' ', badge({ fact: m.rateFact, note: 'výkon stroje' })] : ''), m.kw > 0 && kv('Příkon', `${num(m.kw, 1)} kW`), kv('Půdorys', `${m.w} × ${m.h} m`),
     m.wafer && kv('Wafery', m.wafer.join(' / ') + ' mm'), m.res && kv('Rozlišení', `${num(m.res)} nm`), m.reach && kv('Pracovní okruh', `${m.reach} m`));
   if (hw) {
     const box = h('div', { class: 'v3d' });
@@ -419,6 +436,7 @@ function machinePanel(p, s, b, close, demolish) {
     st.textContent = sim.statusOf(s, b); st.dataset.st = b.st;
     barBox.replaceChildren(...barsOf(s, b));
     if (m.crew) crewDyn();
+    maintDyn();
     bar.style.width = (b.job ? Math.min(100, (b.job.t / b.job.T) * 100) : b.k !== 'miner' ? 0 : m.kind === 'm_miner' ? b.acc * 100 : ((b.dep % LEVEL_M) / LEVEL_M) * 100) + '%';
     if (b.k === 'miner') { // zásoby a odvoz se přepočítávají jen občas, je to pár tisíc dlaždic
       if (age++ % 8) return;
@@ -446,7 +464,22 @@ export function openModal(id, keep) {
 function closeModal() { modal = null; $('modal').hidden = true; $('win').replaceChildren(); }
 
 let mcat = 'Odběratelé', rsel = 'arduino_uno', tsel = null;
-const MARKET_CATS = ['Odběratelé', 'Skladem', 'Výrobky', 'Čipy', 'Wafery s čipy', 'Součástky', 'DPS', 'Díly PC', 'Křemík', 'Suroviny'];
+const MARKET_CATS = ['Odběratelé', 'Skladem', 'Výrobky', 'Čipy', 'Wafery s čipy', 'Součástky', 'DPS', 'Díly PC', 'Křemík', 'Spotřební', 'Suroviny'];
+// Okno Statistiky: čára peněz, příjmů a výdajů za posledních až 14 dní (body po herních hodinách).
+const qty = (n, it) => (ITEMS[it].pack === 't' ? `${num(n, 1)} t` : `${num(n, 1)} × ${ITEMS[it].pack}`);
+function chart(hist, series, zero = true) { // zero = osa od nuly (příjmy a výdaje); peníze se ukazují v rozsahu, ve kterém se pohybují
+  const c = h('canvas', { width: 760, height: 220, class: 'chart' }), g = c.getContext('2d'), W = c.width, H = c.height, P = 70;
+  const t0 = hist[0]?.[0] ?? 0, t1 = Math.max(t0 + 1, hist.at(-1)?.[0] ?? 1), vals = hist.flatMap((p) => series.map(([i]) => p[i]));
+  let lo = zero ? Math.min(0, ...vals) : Math.min(...vals), hi = Math.max(zero ? 1 : lo + 1, ...vals);
+  if (!zero) { const pad = (hi - lo) * 0.1 || Math.abs(hi) * 0.01 || 1; lo -= pad; hi += pad; }
+  const X = (t) => P + ((t - t0) / (t1 - t0)) * (W - P - 8), Y = (v) => H - 22 - ((v - lo) / (hi - lo)) * (H - 34);
+  g.font = '12px Bahnschrift, "Segoe UI", sans-serif'; g.fillStyle = '#8a94a3'; g.strokeStyle = '#2f3743'; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const v = lo + ((hi - lo) * k) / 4, y = Y(v); g.beginPath(); g.moveTo(P, y); g.lineTo(W - 8, y); g.stroke(); g.fillText(fmt(v).replace(' $', ''), 2, y + 4); }
+  for (let d = Math.ceil(t0 / sim.DAY); d * sim.DAY <= t1; d++) g.fillText(`den ${d + 1}`, X(d * sim.DAY) - 14, H - 6);
+  for (const [i, col] of series) { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); hist.forEach((p, n) => (n ? g.lineTo(X(p[0]), Y(p[i])) : g.moveTo(X(p[0]), Y(p[i])))); g.stroke(); }
+  return c;
+}
+const STUCK = { miss: 'chybí vstup', full: 'plno: není kam dávat', staff: 'nikdo nepracuje', money: 'došly peníze', broken: 'porucha', empty: 'vytěženo', tape: 'nezaplacený návrh čipu', cap: 'čeká na dávky v oběhu' };
 const MODALS = {
   intro() { // úvod úrovně: o co jde a co je cílem
     const L = sim.levelOf(G.s), i = MISSIONS.indexOf(L);
@@ -538,8 +571,8 @@ const MODALS = {
     const kinds = [...new Set(r.ops.map((o) => o.kind))];
     let prev = null;
     const steps = r.ops.map((op, i) => { const first = op.name !== prev; prev = op.name; return h('tr', { class: first ? 'first' : '' }, h('td', { class: 'n' }, i + 1), h('td', { title: op.what ?? '' }, first ? op.name : ''), h('td', null, KINDS[op.kind].name),
-      h('td', null, [...Object.entries(op.in ?? {}).map(([it, q]) => `${num(q, 2)}× ${ITEMS[it].name}`), ...(first ? op.mats.map((id) => MATS[id]?.name).filter(Boolean) : [])].join(', ')), h('td', { class: 'n' }, hours(op.h)), h('td', { class: 'n' }, op.opex >= 1 ? fmt(op.opex) : '')); });
-    const outs = r.out ? Object.entries(r.out).map(([it, q]) => `${num(q, 1)}× ${ITEMS[it].name}`) : r.cat === 'fab' ? [`1× ${ITEMS['wl_' + r.chip].name}`] : [`${ITEMS[r.chip].name}: ${num(CHIPS[r.chip].gross / 100, 0)} balení × výtěžnost`];
+      h('td', null, [...Object.entries(op.in ?? {}).map(([it, q]) => `${num(q, 2)}× ${ITEMS[it].name}`), ...(first ? op.mats.map((id) => MATS[id]?.name).filter(Boolean) : [])].join(', ')), h('td', { class: 'n' }, hours(op.h)), h('td', { class: 'n' }, op.chem ? `${num(op.chem, 3)}× chemie` : op.opex >= 1 ? fmt(op.opex) : '')); });
+    const outs = r.out ? Object.entries(r.out).map(([it, q]) => `${num(q, 1)}× ${ITEMS[it].name}`) : r.power ? [`${num(r.power)} MWh elektřiny do zásobníku`] : r.cat === 'fab' ? [`1× ${ITEMS['wl_' + r.chip].name}`] : [`${ITEMS[r.chip].name}: ${num(CHIPS[r.chip].gross / 100, 0)} balení × výtěžnost`];
     frame('Výrobní postupy', h('div', { class: 'split' }, h('nav', { class: 'side' }, side), h('div', { class: 'detail' },
       h('h3', null, r.name), !sim.unlocked(s, r.req) && h('div', { class: 'warn' }, `Nejdřív odemkni ve Stromu: ${reqName(r.req)}`),
       kv('Začíná na stroji', KINDS[r.ops[0].kind].name), kv('Vyrobí', outs.join(', ')), kv('Čas na referenčních strojích', hours(r.ops.reduce((a, o) => a + o.h, 0))),
@@ -547,6 +580,24 @@ const MODALS = {
       pr && [h('h4', null, pr.name), h('p', null, pr.what), pr.fabs?.length && kv('Kde se to dělá', pr.fabs.map((f) => `${f.name} (${f.country})`).join('; ')), pr.sources?.length && h('div', { class: 'srcs' }, pr.sources.slice(0, 5).map((u, i) => link(u, `zdroj ${i + 1}`)))],
       h('h4', null, `Kroky (${r.ops.length})`), h('table', { class: 'grid' }, h('thead', null, h('tr', null, ['#', 'Krok', 'Stroj', 'Vstupy a materiály', 'Čas', 'Materiál'].map((t) => h('th', null, t)))), h('tbody', null, steps)),
       h('h4', null, 'Stroje, které tuhle trasu umí'), kinds.map((k) => { const ms = Object.values(MODELS).filter((m) => r.ops.some((op) => op.kind === k && canDo(m, r, op))); return kv(KINDS[k].name, ms.map((m) => `${m.name} (${fmt(m.usd)})`).join(' · ')); }))));
+  },
+  stats() { // průběh peněz, výroba za den a co kde stojí
+    const s = G.s, hist = s.hist.length ? s.hist : [[s.t, s.money, s.rateIn, s.rateOut]], key = (b) => (b.model ? MODELS[b.model].name.split(':')[0] : '');
+    const day = Object.entries(s.lastDay ?? {}).filter(([it]) => ITEMS[it]).sort((a, b) => b[1] * ITEMS[b[0]].usd - a[1] * ITEMS[a[0]].usd).slice(0, 12);
+    const stuck = s.list.filter((b) => (b.k === 'machine' || b.k === 'miner') && STUCK[b.st]);
+    const legend = (items) => h('div', { class: 'legend' }, items.map(([t, c]) => h('span', null, h('i', { style: `background:${c}` }), t)));
+    frame('Statistiky',
+      h('div', { class: 'specs' }, kv('Peníze', fmt(s.money)), kv('Příjem za den', fmt(s.rateIn)), kv('Výdaje za den', fmt(s.rateOut)),
+        kv('Vlastní elektřina', s.gen ? `vyrobeno ${num(s.gen, 1)} MWh, v zásobníku ${num(s.mwh, 1)} z ${sim.GRID_MWH} MWh` : 'zatím žádná (Strom: Uhelná teplárna)')),
+      h('h4', null, 'Peníze'), chart(hist, [[1, '#ffb52e']], false),
+      h('h4', null, 'Příjmy a výdaje za den'), chart(hist, [[2, '#3fe08a'], [3, '#ff4d5e']]), legend([['příjem', '#3fe08a'], ['výdaje', '#ff4d5e']]),
+      h('h4', null, 'Výroba za poslední celý den'), day.length ? h('table', { class: 'grid' }, h('tbody', null, day.map(([it, n]) => h('tr', null, h('td', null, icon(it, 20)), h('td', null, ITEMS[it].name), h('td', { class: 'n' }, qty(n, it)), h('td', { class: 'n' }, fmt(n * ITEMS[it].usd))))))
+        : h('p', { class: 'dim' }, 'Zatím není za celý den nic: počkej do dalšího dne.'),
+      h('h4', null, `Kde to vázne (${stuck.length})`), stuck.length ? h('table', { class: 'grid' }, h('tbody', null, stuck.slice(0, 30).map((b) => h('tr', null, h('td', null, key(b)), h('td', { class: 'warn' }, STUCK[b.st]), h('td', { class: 'dim' }, sim.statusOf(s, b)),
+        h('td', null, h('button', { onclick: () => { closeModal(); G.under = false; G.fly = { x: b.x + b.w / 2, y: b.y + b.h / 2, z: 22 }; select(b); } }, 'Ukázat'))))))
+        : h('p', { class: 'dim' }, 'Všechny stroje a doly jedou, nebo čekají na práci.'));
+    const n = s.hist.length;
+    modal.dyn = () => { if (s.hist.length !== n) MODALS.stats(); };
   },
   menu() {
     const mk = (t, f, c = '') => h('button', { class: c, onclick: f }, t);
@@ -565,8 +616,12 @@ const MODALS = {
         'Venku se těží. Ložisko má konečné zásoby a rypadlo ho v dosahu časem vytěží. Hlouběji leží další nerosty: Průzkumný vrt ukáže, co je v kterém patře, a Hlubinný důl se k tomu prorazí.',
         'Pro fab postav smyčku dopravníků a stroje kolem ní. Lot waferů krouží a každý stroj si ho vezme, když je na řadě jeho krok. Hotové kusy ze smyčky vyvede Třídič.',
         'Rozpracované dávky sklad nebere: musí dojet ke stroji, který umí další krok. Když se dávka zasekne, v panelu stroje a v okně Postupy uvidíš, jaký stroj chybí.',
-        'Okno Postupy ukáže u každého výrobku všechny kroky, stroje, materiály a jestli se výroba vyplatí.'].map((t) => h('li', null, t))),
-      h('h4', null, 'Ovládání'), h('div', { class: 'keys' }, [['WASD, tažení levým tlačítkem, kurzor u okraje', 'posun'], ['tažení pravým nebo prostředním tlačítkem, Shift + levé, kompas', 'otočení a náklon pohledu'], ['Q a E', 'plynulé otáčení'], ['kolečko', 'přiblížení'], ['dvojklik', 'přelet na místo'], ['G', 'pohled pod zem'], ['klik na střechu', 'vstup do haly'], ['H', 'zpět do dílny'], ['R', 'otočit stavbu'], ['F', 'vzít stavbu pod kurzorem'], ['X', 'bourat'], ['pravé tlačítko, Esc', 'zrušit nástroj'], ['mezerník, 1–4', 'pauza a rychlost'], ['V M C P', 'Strom, Trh, Čipy, Postupy'], ['Ctrl+S', 'uložit']].map(([a, b]) => kv(a, b))));
+        'Okno Postupy ukáže u každého výrobku všechny kroky, stroje, materiály a jestli se výroba vyplatí.',
+        'Auta se kupují sama za svou cenu a platí naftu a servis za každý kilometr. Do kopce jedou pomaleji a silnice ve svahu je dražší.',
+        'Stroje se občas porouchají; v panelu stroje jde najmout údržbáře, s ním jsou poruchy třikrát řidší. Výrobní stroje v halách mají obsluhu a mzdy jako doly a pece.',
+        'Uhelná teplárna (Strom) dělá z uhlí proud: stroje berou elektřinu nejdřív z ní, přebytek se prodá do sítě. Fab bere chemii a plyny ze Skladu, Sklad je sám dokupuje.',
+        'Odběratelé občas pošlou zakázku (vlevo nahoře): dovez do termínu dané množství a dostaneš prémii a bod rozvoje. Okno Statistiky (I) ukáže průběh peněz, výrobu za den a co kde vázne.'].map((t) => h('li', null, t))),
+      h('h4', null, 'Ovládání'), h('div', { class: 'keys' }, [['WASD, tažení levým tlačítkem, kurzor u okraje', 'posun'], ['tažení pravým nebo prostředním tlačítkem, Shift + levé, kompas', 'otočení a náklon pohledu'], ['Q a E', 'plynulé otáčení'], ['kolečko', 'přiblížení'], ['dvojklik', 'přelet na místo'], ['G', 'pohled pod zem'], ['klik na střechu', 'vstup do haly'], ['H', 'zpět do dílny'], ['R', 'otočit stavbu'], ['F', 'vzít stavbu pod kurzorem'], ['X', 'bourat'], ['pravé tlačítko, Esc', 'zrušit nástroj'], ['mezerník, 1–4', 'pauza a rychlost'], ['V M C P I', 'Strom, Trh, Čipy, Postupy, Statistiky'], ['Ctrl+S', 'uložit']].map(([a, b]) => kv(a, b))));
   },
 };
 
@@ -637,6 +692,11 @@ function renderQuest() { // karta cíle vlevo nahoře: krok průvodce, cíle úr
     !g.last && h('button', { class: 'link', onclick: () => { s.guide = null; renderQuest(); } }, 'Přeskočit průvodce')), ...goals);
   else if (goals.length) $('quest').replaceChildren(...head(`Úroveň ${MISSIONS.indexOf(L) + 1}`, L.name, goalSig.split('1').length - 1 ? (goalSig.split('1').length - 1) / L.goals.length : 0), h('p', null, s.won ? 'Úroveň je splněná. Můžeš hrát dál, nebo v Menu přejít na další.' : L.what), ...goals);
   else $('quest').replaceChildren(...(q ? [...head(`Úkol ${s.quest + 1} z ${QUESTS.length}`, 'Další cíl', s.quest / QUESTS.length), h('p', null, q[0]), h('div', { class: 'reward' }, `Odměna ${fmt(q[2])} a ★ ${q[3]}`)] : [...head('Úkoly', 'Všechno splněno', 1), h('p', null, 'Továrna je tvoje.')]));
+  const d = s.deal; // zakázka odběratele: co, kolik, kam a do kdy
+  if (d) $('quest').append(h('div', { class: 'deal' }, h('h4', null, `Zakázka: ${d.name}`),
+    h('p', null, `Dovez ${qty(d.n, d.it)}: ${ITEMS[d.it].name.split(' (')[0].toLowerCase()}, do ${hours((d.until - s.t) / HOUR)}. Prémie ${fmt(d.bonus)} a ★ 1 navíc k ceně.`),
+    h('div', { class: 'qbar' }, h('i', { style: `width:${Math.min(1, d.got / d.n) * 100}%` })), h('small', null, `doručeno ${num(Math.min(d.got, d.n))} z ${num(d.n)}`),
+    h('button', { class: 'link', onclick: () => { G.under = false; G.fly = { x: d.x + 5, y: d.y + 4, z: 14 }; } }, 'Ukázat odběratele')));
 }
 function tickGuide(s) { // zvýrazní, kam kliknout, a po splnění kroku jde dál
   const g = GUIDE[s.guide], m = g?.mark?.();
@@ -648,7 +708,7 @@ function tickGuide(s) { // zvýrazní, kam kliknout, a po splnění kroku jde d�
 }
 export function initUI(a) {
   api = a;
-  $('nav').append(h('button', { title: 'Zpět do dílny', onclick: home }, 'Dílna', h('kbd', null, 'H')), ...[['research', 'Strom', 'V'], ['market', 'Trh', 'M'], ['chips', 'Čipy', 'C'], ['routes', 'Postupy', 'P'], ['menu', 'Menu', 'Esc']].map(([id, t, k]) => h('button', { 'data-m': id, onclick: () => openModal(id) }, t, h('kbd', null, k))));
+  $('nav').append(h('button', { title: 'Zpět do dílny', onclick: home }, 'Dílna', h('kbd', null, 'H')), ...[['research', 'Strom', 'V'], ['market', 'Trh', 'M'], ['chips', 'Čipy', 'C'], ['routes', 'Postupy', 'P'], ['stats', 'Statistiky', 'I'], ['menu', 'Menu', 'Esc']].map(([id, t, k]) => h('button', { 'data-m': id, onclick: () => openModal(id) }, t, h('kbd', null, k))));
   $('pts').addEventListener('click', () => openModal('research'));
   $('speed').append(...[0, 1, 3, 10, 30].map((v) => h('button', { 'data-v': v, title: v ? `Rychlost ${v}×` : 'Pauza (mezerník)', onclick: () => setSpeed(v) }, v ? v + '×' : 'Ⅱ')));
   // kompas: táhnutím za něj se pohled otáčí a naklání stejně jako pravým tlačítkem v mapě; střelka ukazuje sever
@@ -681,7 +741,7 @@ export function tickUI(now, dt) {
   $('money').textContent = fmt(s.money);
   if (now - lastSlow < 250) return;
   lastSlow = now;
-  $('flow').textContent = `příjem ${fmt(s.rateIn)} · výdaje ${fmt(s.rateOut)} za den`;
+  $('flow').textContent = `příjem ${fmt(s.rateIn)} · výdaje ${fmt(s.rateOut)} za den` + (s.gen ? ` · proud ${num(s.mwh, 1)} MWh` : '');
   $('ptsn').textContent = `★ ${s.sandbox ? '∞' : s.pts}`; $('ptsbar').style.width = Math.min(100, (s.xp / sim.needOf(s.lvl)) * 100) + '%';
   $('ptsnext').textContent = `další za ${fmt(sim.needOf(s.lvl) - s.xp)}`;
   const inv = Object.keys(ITEMS).filter((it) => s.inv[it] >= 1).sort((a, b) => s.inv[b] * ITEMS[b].usd - s.inv[a] * ITEMS[a].usd).slice(0, 4).sort(), sg = inv.map((it) => it + Math.floor(s.inv[it])).join(); // čtyři nejcennější zásoby Skladu: vidět hned, bez klikání
@@ -692,11 +752,14 @@ export function tickUI(now, dt) {
     if (fx.win) { localStorage.setItem(DONE, JSON.stringify([...doneSet().add(fx.win)])); sfx('done'); renderQuest(); openModal('win', true); }
     else if (fx.quest != null) { toast(`Úkol splněn: +${fmt(fx.usd)} a ★ ${fx.pts}`, 'ok', 7000); sfx('done'); renderQuest(); }
     else if (fx.lvl != null) { toast(`Nový bod rozvoje. Máš ★ ${s.pts}: utrať je ve Stromu (klávesa V).`, 'ok', 7000); sfx('done'); }
+    else if (fx.deal) { toast(fx.deal === 'new' ? `Nová zakázka od odběratele: ${s.deal?.name ?? ''}. Podrobnosti vlevo nahoře.` : fx.deal === 'done' ? `Zakázka splněna: prémie ${fmt(fx.usd)} a ★ 1` : 'Zakázka propadla: nestihlo se to. Další přijde zítra.', fx.deal === 'fail' ? 'err' : 'ok', 7000); sfx(fx.deal === 'fail' ? 'error' : 'done'); renderQuest(); }
+    else if (fx.broke) toast(`Porucha: ${MODELS[fx.broke].name.split(':')[0]}. Oprava ${sim.FIX_H} h za ${fmt(fx.usd)}. Údržbář v panelu stroje poruchy zředí.`, 'err', 6000);
     else { saleToast(fx.it, fx.usd); if (now - lastCoin > 1500) { sfx('coin'); lastCoin = now; } }
   }
   if (G.sel && !s.list.includes(G.sel)) select(null);
   if (G.hot && $('tip').dataset.w && s.list.includes(G.hot)) $('tip').replaceChildren(...tipBody(G.hot)); // pruhy v bublině běží živě
-  if (goalSig !== sim.levelOf(s).goals.map((x) => +!!x[1](s)).join('')) renderQuest(); // splněný cíl se odškrtne
+  const ds = s.deal ? `${Math.min(s.deal.got, s.deal.n)}:${Math.ceil((s.deal.until - s.t) / HOUR)}` : '';
+  if (goalSig !== sim.levelOf(s).goals.map((x) => +!!x[1](s)).join('') || ds !== dealSig) { dealSig = ds; renderQuest(); } // splněný cíl se odškrtne, zakázka ukazuje postup
   tickGuide(s);
   panelDyn?.(); modal?.dyn?.();
   for (const b of $('tools').children) if (b.dataset.usd) b.classList.toggle('poor', !s.sandbox && s.money < +b.dataset.usd);

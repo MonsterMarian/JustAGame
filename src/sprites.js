@@ -39,6 +39,7 @@ const LOOK = {
     circ(g, W * 0.82, H * 0.34, H * 0.2, c[1]); circ(g, W * 0.82, H * 0.34, H * 0.12, '#c9d2de');
   },
   cmp(g, W, H, c) { row(3, (f) => { circ(g, W * (0.12 + f * 0.76), H * 0.45, Math.min(W / 7, H * 0.28), c[1]); circ(g, W * (0.12 + f * 0.76), H * 0.45, Math.min(W / 13, H * 0.14), '#c9d2de'); }); rect(g, W * 0.2, H * 0.82, W * 0.6, H * 0.1, c[1]); },
+  power(g, W, H, c) { const r = Math.min(W, H); circ(g, W * 0.3, H * 0.35, r * 0.22, '#d9d4c8'); circ(g, W * 0.3, H * 0.35, r * 0.13, DARK); rect(g, W * 0.55, H * 0.2, W * 0.32, H * 0.45, c[1]); circ(g, W * 0.75, H * 0.78, r * 0.1, '#c8402f'); rect(g, W * 0.12, H * 0.72, W * 0.4, H * 0.14, '#24272c'); }, // chladicí věž, kotelna, komín, uhlí
   metro(g, W, H, c) { rect(g, W * 0.2, H * 0.2, W * 0.6, H * 0.6, c[1]); circ(g, W / 2, H / 2, Math.min(W, H) * 0.17, DARK); circ(g, W / 2, H / 2, Math.min(W, H) * 0.07, c[2]); },
   ate(g, W, H, c) { rect(g, W * 0.12, H * 0.18, W * 0.5, H * 0.64, DARK); rect(g, W * 0.68, H * 0.22, W * 0.2, H * 0.56, c[1]); row(3, (f) => rect(g, W * 0.71, H * (0.26 + f * 0.48), W * 0.14, H * 0.06, c[2])); },
   prober(g, W, H, c) { circ(g, W * 0.42, H / 2, Math.min(W, H) * 0.3, c[1]); circ(g, W * 0.42, H / 2, Math.min(W, H) * 0.2, '#c9d2de'); rect(g, W * 0.76, H * 0.28, W * 0.14, H * 0.44, DARK); },

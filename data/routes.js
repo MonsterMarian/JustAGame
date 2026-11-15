@@ -5,7 +5,7 @@ import PROCESSES_BASE from './hw/processes.js';
 import { PROCESSES_EXTRA } from './hw/parts_fab.js';
 import MATERIALS, { ROUTES as OWN_CHIP_ROUTES } from './hw/materials.js';
 import PRICES from './prices.js';
-import { KINDS, ITEMS, CHIPS, BOARDS, BUILDS, MODELS, SELL, diesPerWafer, yieldOf } from './catalog.js'; // MODELS: i pro úkoly se směnami
+import { KINDS, ITEMS, CHIPS, BOARDS, BUILDS, MODELS, SELL, KWH_USD, COAL_PER_MWH, diesPerWafer, yieldOf } from './catalog.js'; // MODELS: i pro úkoly se směnami
 
 export const MATS = Object.fromEntries(MATERIALS.map((m) => [m.id, m]));
 const W = 'https://en.wikipedia.org/wiki/';
@@ -83,12 +83,13 @@ const hue = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)
 const SHAPE = { fab: 'foup', pkg: 'tray', smt: 'board', pcb: 'pcb', passive: 'box', wafer: 'ingot', bulk: 'ore', build: 'pc' };
 // ctx = velikost dávky v jednotkách jednotlivých druhů strojů; z ní a z referenčního výkonu vyjde čas kroku.
 function route(id, name, cat, ops, ctx, o = {}) {
-  const r = { id, name, cat, req: o.req, chip: o.chip ?? null, wafer: o.wafer ?? null, cd: o.cd ?? null, out: o.out ?? null, tape: o.tape ?? null, lot: o.lot ?? null, dies: o.dies ?? null };
+  const r = { id, name, cat, req: o.req, chip: o.chip ?? null, wafer: o.wafer ?? null, cd: o.cd ?? null, out: o.out ?? null, tape: o.tape ?? null, lot: o.lot ?? null, dies: o.dies ?? null, power: o.power ?? null };
   r.ops = ops.map((op, i) => {
     const kd = KINDS[op.kind];
     const units = op.units ?? ctx[kd.u] ?? 1;
     const opex = (op.kind === 'm_track' ? o.resist ?? 0.5 : kd.opex) * units + (i === 0 ? o.mat ?? 0 : 0);
-    return { kind: op.kind, name: op.name, what: op.what, mats: op.mats ?? [], proc: op.proc, h: op.h ?? units / kd.ref, opex, in: op.in ?? null, nw: !!op.nw };
+    const chem = cat === 'fab' ? opex / ITEMS.fabchem.usd : 0; // ve fabu je spotřební materiál zboží ve Skladu (balení fabchem), ne náklad za krok
+    return { kind: op.kind, name: op.name, what: op.what, mats: op.mats ?? [], proc: op.proc, h: op.h ?? units / kd.ref, opex: chem ? 0 : opex, chem, in: op.in ?? null, nw: !!op.nw };
   });
   if (o.in) r.ops[0].in = { ...o.in, ...(r.ops[0].in ?? {}) };
   ROUTES[id] = r;
@@ -185,6 +186,9 @@ route('glass', ITEMS.glass.name, 'bulk', [{ kind: 'm_glass', name: 'Tavení skla
 // sklářská dílna: dávka 100 kg; malá pec hoří celý den, proto spotřebuje na kilogram skla mnohem víc paliva než vana (odhad z příkonu hořáku 150 000 BTU/h)
 route('glassware', ITEMS.glassware.name, 'bulk', [{ kind: 'm_glass_studio', name: 'Tavení a foukání skla', what: 'V pánvové peci se utaví vsázka z křemene, sody a vápence a skláři z ní píšťalou foukají užitkové sklo.', in: { quartz: 0.074, coal: 0.14 } }], { t: 0.1 }, { req: 'glass0', out: { glassware: 1 } });
 
+// elektřina: uhlí se spálí v kotli, pára roztočí turbínu; 1 MWh na dávku jde do zásobníku sítě (sim.js)
+route('power', 'Elektřina z uhlí', 'bulk', [{ kind: 'm_power', name: 'Spalování uhlí a výroba páry', what: 'Uhlí hoří pod parním kotlem, pára roztáčí turbínu s generátorem. Proud jde nejdřív do tvých strojů, přebytek se prodá do sítě.', in: { coal: COAL_PER_MWH } }], { MWh: 1 }, { req: 'power1', power: 1 });
+
 // kdo položku spotřebovává: podle toho sklad pozná, co je hotový výrobek na prodej a co díl do další výroby
 export const USERS = {};
 for (const r of Object.values(ROUTES)) for (const op of r.ops) for (const it in op.in ?? {}) (USERS[it] ??= []).push(r);
@@ -195,8 +199,9 @@ export const canDo = (model, r, op) => model.kind === op.kind && (op.nw || !mode
 // Ekonomika jedné dávky při nákupu všech dílů na Trhu: díly, spotřební materiál a tržba za výstup (bez elektřiny).
 export function econ(r) {
   let parts = 0, opex = 0, out = 0;
-  for (const op of r.ops) { opex += op.opex; for (const it in op.in ?? {}) parts += op.in[it] * ITEMS[it].usd; }
+  for (const op of r.ops) { opex += op.opex + op.chem * ITEMS.fabchem.usd; for (const it in op.in ?? {}) parts += op.in[it] * ITEMS[it].usd; }
   if (r.out) for (const it in r.out) out += r.out[it] * ITEMS[it].usd * SELL;
+  else if (r.power) out = r.power * 1000 * KWH_USD; // hodnota proudu = co by stál ze sítě
   else if (r.cat === 'pkg') out = ((CHIPS[r.chip].gross * CHIPS[r.chip].yield0) / 100) * ITEMS[r.chip].usd * SELL;
   else out = ITEMS['wl_' + r.chip].usd; // lot waferů se neprodává; hodnota = cena téhož lotu od foundry (0, když ho foundry nenabízí)
   return { parts, opex, out };
@@ -215,6 +220,8 @@ export const RESEARCH = [
   R('shaft1', 0, 'Malý důl', 3, ['survey'], 'Šachta s vrátkem do 100 m: uhlí, sůl a měď, které na povrchu nejsou.'),
   R('mine2', 0, 'Velké rypadlo s drtičem', 4, ['mine1', 'car2'], 'Caterpillar 320 a čelisťový drtič: 150 t za hodinu. Bez pořádných aut a silnice to neodvezeš.'),
   R('shaft2', 0, 'Hlubinný důl', 5, ['shaft1'], 'Jádrová souprava LF90D a úpadnice s nakladačem až do 300 m: cín a zlato.'),
+  R('power1', 0, 'Uhelná teplárna', 3, ['smt1'], 'Vlastní proud z vlastního uhlí: 1 MW. Stroje berou elektřinu nejdřív z ní, přebytek se prodá do sítě. Na tunu uhlí asi 2 MWh.'),
+  R('power2', 4, 'Uhelná elektrárna 20 MW', 5, ['power1', 'silicon'], 'Blok 20 MW utáhne obloukovou pec na metalurgický křemík.'),
   R('road1', 1, 'Polní cesta', 0, [], 'Vyježděná cesta. Po každé silnici jezdí auta sama: stačí ji dovést od lomu k cíli. S tím hra začíná.'),
   R('belts', 1, 'Pásové dopravníky', 2, ['road1'], 'Dopravník veze tunu na metr bez auta: lom, který se ho dotýká, na něj sype sám. Je dražší než cesta, ale nikdy nečeká.'),
   R('road2', 1, 'Štěrková cesta', 2, ['road1'], 'Auta po ní jedou skoro dvakrát rychleji. Polní cestu vylepšíš přetažením.'),

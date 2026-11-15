@@ -7,14 +7,14 @@ import { CHUNK, ORES, LEVEL_M, STARTERS } from './world.js';
 import { drawChunk } from './render.js';
 import { MODELS, ITEMS, CARS, KINDS } from '../data/catalog.js';
 import { ROUTES } from '../data/routes.js';
-import { DX, DY, key, at, isHall, sizeOf, canPlace, centerOf, oreAt, left, survey, capOf, baseOf, PILE, SURF_T, DEEP_T } from './sim.js';
+import { DX, DY, key, at, isHall, sizeOf, canPlace, centerOf, oreAt, left, survey, capOf, baseOf, PILE, SURF_T, DEEP_T, GRID_MWH } from './sim.js';
 import { G } from './g.js';
 
 const WALL = 6, INSIDE = 80; // výška haly v metrech; blíž než INSIDE metrů se střechy otevřou
 const PIT_M = 10; // hloubka jámy po vytěžení povrchové vrstvy
 const UG = 0.25; // pod zemí je svislé měřítko čtvrtinové, aby se šest pater po 50 m vešlo do pohledu
 const SUB = { m_fct: 'm_ate', m_pcb_etch: 'm_wet_bench' }; // stroje bez vlastního modelu si půjčí tvarově nejbližší
-const LED = { run: 0x3fe08a, idle: 0x59616d, cap: 0x59616d, done: 0x59616d, miss: 0xffb52e, sink: 0xffb52e, money: 0xff4d5e, tape: 0xff4d5e, full: 0xff4d5e, empty: 0xff4d5e, staff: 0xff4d5e };
+const LED = { run: 0x3fe08a, idle: 0x59616d, cap: 0x59616d, done: 0x59616d, miss: 0xffb52e, sink: 0xffb52e, money: 0xff4d5e, tape: 0xff4d5e, full: 0xff4d5e, empty: 0xff4d5e, staff: 0xff4d5e, broken: 0xff4d5e };
 let infoAt = 0, padPrev = new Set(), sky = null;
 const SKY_LOW = 0xdcebf5, UNDER_BG = new THREE.Color(0x241d17), DECO = {};
 const Q4 = new THREE.Quaternion(), P3 = new THREE.Vector3(), S3 = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
@@ -168,6 +168,18 @@ const OWN = {
   },
 };
 OWN.m_glass_studio = OWN.m_glass;
+OWN.m_power = (r) => { // uhelná elektrárna na půdorysu 6 × 6 (větší se zvětší): kotelna se strojovnou, komín, chladicí věž, hromada uhlí s pásem, trafo a vedení
+  bx(r, 6, 0.06, 6, C.lot);
+  bx(r, 3.2, 3.4, 2.4, C.wall, -1.2, 0, -1.5); bx(r, 3.24, 0.5, 2.44, C.wall2, -1.2, 0, -1.5); bx(r, 3.26, 0.35, 2.46, C.accent, -1.2, 2.9, -1.5); bx(r, 3.4, 0.14, 2.6, C.roof, -1.2, 3.4, -1.5); // strojovna s turbínou
+  bx(r, 1.6, 4.6, 1.8, C.wall2, -2.0, 0, -1.6); bx(r, 1.7, 0.14, 1.9, C.roof, -2.0, 4.6, -1.6); // vyšší kotelna
+  for (let i = 0; i < 3; i++) win(r, 0.5, 0.6, -2.3 + i * 0.75, 1.6, -0.29);
+  gate(r, 1.0, 1.5, -0.4, 0, -0.29);
+  stack(r, -2.4, -2.5, 7.5, 0.35); // komín
+  cyl(r, 1.25, 3.4, 0xd9d4c8, 1.6, 0.06, -1.4, 0.8, 18); cyl(r, 0.8, 0.7, 0xd9d4c8, 1.6, 3.46, -1.4, 0.95, 18); cyl(r, 0.97, 0.03, C.trim, 1.6, 4.16, -1.4, 0.97, 18); // chladicí věž
+  heap(r, 1.0, 0.9, C.coal, -1.6, 1.6); bx(r, 2.2, 0.08, 0.3, C.dark, -1.1, 1.1, 0.35).rotation.z = 0.55; bx(r, 0.06, 1.1, 0.25, C.steel, -0.3, 0, 0.35); // uhlí a pás do kotelny
+  for (let i = 0; i < 2; i++) { bx(r, 0.6, 0.8, 0.5, C.steel, 1.2 + i * 0.9, 0.06, 1.3); bx(r, 0.06, 2.0, 0.06, C.trim, 1.2 + i * 0.9, 0.06, 2.2); } bx(r, 1.2, 0.05, 0.05, C.trim, 1.65, 1.95, 2.2); // trafa a vedení
+  worker(r, 0.2, 1.8, 2.2);
+};
 // Auto: rám, kabina se skly, korba a kola. Kabina míří k +x; vrací polohu korby [střed x, délka, výška dna], kam se kreslí náklad.
 const CAR_LOOK = { car_pickup: [3.1, 1.25, 0xd9573c], car_truck: [4.2, 1.55, 0x3f7fc4], car_dump: [5.8, 2.0, 0xf4b62c] }; // délka, šířka, barva; menší než ve skutečnosti, aby se vešla na metrovou dlaždici
 function carShape(r, id) {
@@ -303,8 +315,9 @@ function infoOf(s, b) {
     const [cx, cy] = centerOf(b);
     return `${ORES[b.oi].name}: zbývá ${Math.round(survey(s, cx, cy, m.reach, m.kind === 'm_shaft' ? b.goal : 0)[b.oi] ?? 0)} t · hromada ${b.out.length}/${PILE}`;
   }
-  if (KINDS[m.kind].cat !== 'Suroviny' || !ROUTES[b.prod]?.out) return '';
-  const cap = capOf(b);
+  const cap = KINDS[m.kind].cat === 'Suroviny' && ROUTES[b.prod] ? capOf(b) : null;
+  if (cap && ROUTES[b.prod].power) return `${Object.keys(cap).map((it) => `${nm(it)} ${Math.floor(b.buf[it] ?? 0)}/${cap[it]}`).join(' · ')} → proud, zásobník ${Math.floor(s.mwh)}/${GRID_MWH} MWh`;
+  if (!cap || !ROUTES[b.prod].out) return '';
   return Object.keys(cap).map((it) => `${nm(it)} ${Math.floor(b.buf[it] ?? 0)}/${cap[it]}`).join(' · ') + ` → ${Object.keys(ROUTES[b.prod].out).map(nm).join(', ')} ${b.out.length}/${PILE}`;
 }
 const sizeLabel = (sp, k) => sp.scale.set(sp.userData.base[0] * k, sp.userData.base[1] * k, 1);
@@ -597,6 +610,7 @@ function updateCamera() {
   G.inside = dist < INSIDE || (!!G.tool && G.tool !== 'hall') || !!G.under; // při stavění uvnitř a pod zemí jsou střechy otevřené
 }
 const TAG = { miss: (b) => (ITEMS[b.miss] ? 'chybí: ' + ITEMS[b.miss].name.split(' (')[0].toLowerCase() : ''), money: () => 'došly peníze', empty: () => 'vytěženo', staff: () => 'nikdo tu nepracuje',
+  broken: (b) => `porucha: oprava ${Math.ceil(b.fix)} h`,
   full: (b) => (!b._sinks ? 'plno: chybí odvoz' : b._sinks.some((x) => x.path) ? 'plno: odběr má dost, veď cestu i do Skladu' : 'plno: chybí cesta, není kam vozit') };
 const tagOf = (b) => TAG[b.st]?.(b) ?? (b.out?.length >= 5 && b._sinks && !b._sinks.some((x) => x.path) ? 'chybí cesta: není kam vozit' : '');
 const colorOf = (c) => cols.get(c) ?? (cols.set(c, new THREE.Color(c)), cols.get(c));

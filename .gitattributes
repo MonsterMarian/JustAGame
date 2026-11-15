@@ -1,0 +1,4 @@
+# konce řádků v repozitáři vždy LF, Windows skripty CRLF
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary

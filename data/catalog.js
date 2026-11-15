@@ -52,9 +52,17 @@ export const KINDS = {
   m_shaft: k('Suroviny', 'shaft', 't', 40, 14, 'Hlubinný důl'), m_arc_furnace: k('Suroviny', 'arc', 't', 1.7, 90, 'Elektrická oblouková pec (metalurgický křemík)'),
   m_siemens: k('Suroviny', 'reactor', 't', 0.06, 1200, 'Siemensova linka (trichlorsilan → polykřemík)'),
   m_glass: k('Suroviny', 'furnace', 't', 3.33, GLASS_OPEX, 'Vanová sklářská pec'), m_glass_studio: k('Suroviny', 'furnace', 't', 0.0113, GLASS_OPEX, 'Sklářská dílna (pánvová pec)'),
+  m_power: k('Suroviny', 'power', 'MWh', 1, 0, 'Uhelná elektrárna'),
 };
 for (const [id, kd] of Object.entries(KINDS)) { kd.id = id; kd.name ??= HW[id]?.name ?? id; }
-export const UNIT = { wafer: 'waferů/h', unit: 'ks/h', wire: 'drátků/h', ingot: 'ingotů/h', board: 'desek/h', place: 'součástek/h', panel: 'panelů/h', kpcs: 'tis. ks/h', t: 't/h', m: 'm/h' };
+export const UNIT = { wafer: 'waferů/h', unit: 'ks/h', wire: 'drátků/h', ingot: 'ingotů/h', board: 'desek/h', place: 'součástek/h', panel: 'panelů/h', kpcs: 'tis. ks/h', t: 't/h', m: 'm/h', MWh: 'MW' };
+// Elektrárna: spotřeba tepla průměrného amerického uhelného bloku (EIA 2025: 10 647 Btu/kWh = 11,2 GJ na MWh) dělená výhřevností černého uhlí 24 GJ/t (odhad).
+export const HEAT_RATE = { gj: Math.round(10647 * 1.055056) / 1000, fact: 'doc', src: 'https://www.eia.gov/electricity/annual/html/epa_08_01.html', note: 'EIA, Electric Power Annual, tab. 8.1: průměrná spotřeba tepla uhelných bloků v USA 2025 = 10 647 Btu na kWh.' };
+export const COAL_GJ = 24; // výhřevnost černého uhlí v GJ na tunu (odhad bez zdroje, běžné energetické uhlí 22–26 GJ/t)
+export const COAL_PER_MWH = Math.round((HEAT_RATE.gj / COAL_GJ) * 1000) / 1000; // tuny uhlí na MWh elektřiny
+export const FEED_USD = 40; // výkupní cena přebytku do sítě v USD za MWh (odhad velkoobchodní ceny bez zdroje)
+// Nafta pro auta: EIA, průměr USA 9. 11. 2026 = 6,127 USD za galon včetně daní.
+export const DIESEL = { usd: Math.round((6.127 / 3.78541) * 1000) / 1000, fact: 'doc', src: 'https://www.eia.gov/petroleum/gasdiesel/', note: 'EIA: průměrná cena nafty v USA 9. 11. 2026 = 6,127 USD za galon (3,785 l) včetně daní.' };
 export const CATS = ['Doprava', 'Logistika', 'Osazování', 'DPS', 'Pasivní', 'Pouzdření', 'Fab', 'Wafery', 'Suroviny'];
 
 // ---------------------------------------------------------------- modely (skutečné stroje)
@@ -67,7 +75,7 @@ const M = (id, kind, name, tier, usd, rate, kw, w, h, o = {}) => {
   // Cena použitého kusu nepatří k novému stroji: nový zůstane odhadem a doložená cena z bazaru jde do poznámky.
   if (p && tier === 'new' && (/^(použit|odhad typické ceny použit|repas)/i.test(p.note ?? '') || id === 'reflow_1913')) p = { src: p.src, note: `odhad ceny nového stroje; nabídka z druhé ruky nebo z tržiště: ${Math.round(p.usd).toLocaleString('cs')} USD (${p.note})` };
   MODELS[id] = { id, kind, name, tier, usd: p?.usd ?? usd, fact: p?.fact ?? o.fact ?? 'estimate', src: p?.src ?? o.src ?? null, note: p?.note ?? o.note ?? null,
-    rate: PRICES['rate_' + id]?.rate ?? rate, rateFact: PRICES['rate_' + id]?.fact ?? 'estimate', rateSrc: PRICES['rate_' + id]?.src ?? null, rateNote: PRICES['rate_' + id]?.note ?? null, kw, w, h, req: o.req, wafer: o.wafer ?? null, res: o.res ?? null, clean: !!o.clean, reach: o.reach ?? null, maxLv: o.maxLv ?? null, sink: o.sink ?? null, crew: o.crew ?? null }; // crew = kolik lidí obsadí jednu směnu (jen těžba, pece a hutě; odhad)
+    rate: PRICES['rate_' + id]?.rate ?? rate, rateFact: PRICES['rate_' + id]?.fact ?? 'estimate', rateSrc: PRICES['rate_' + id]?.src ?? null, rateNote: PRICES['rate_' + id]?.note ?? null, kw, w, h, req: o.req, wafer: o.wafer ?? null, res: o.res ?? null, clean: !!o.clean, reach: o.reach ?? null, maxLv: o.maxLv ?? null, sink: o.sink ?? null, crew: o.crew ?? (KINDS[kind].cat === 'Suroviny' ? null : 1) }; // crew = kolik lidí obsadí jednu směnu (odhad); výrobní stroje v halách obsluhuje jeden člověk na směnu, vrt obsluhu nepočítá
 };
 const doc = (src, x = {}) => ({ fact: 'doc', src, ...x });
 const W100 = [100], W200 = [200], W300 = [300];
@@ -186,6 +194,9 @@ M('shaft_st7', 'm_shaft', 'Úpadnice s nakladačem Epiroc Scooptram ST7', 'new',
 M('miner_cat320', 'm_miner', 'Caterpillar 320 + drtič Metso Nordberg C106', 'new', 650000, 150, 0, 4, 4, { req: 'mine2', crew: 3, reach: 14 });
 M('arc_furnace', 'm_arc_furnace', 'Oblouková pec 20 MVA (metalurgický křemík)', 'new', 30000000, 1.7, 20000, 12, 12, { req: 'silicon', crew: 8 });
 M('siemens_line', 'm_siemens', 'Siemensovy reaktory + syntéza a destilace TCS', 'new', 35000000, 0.06, 3500, 14, 10, { req: 'silicon', crew: 10 });
+// Elektrárny: rate = výkon v MW (MWh za hodinu práce). Ceny a počty lidí jsou odhady bez zdroje (malé uhelné bloky kolem 3 000–4 000 USD za kW).
+M('power_1', 'm_power', 'Uhelná teplárna 1 MW (roštový kotel + parní turbína)', 'used', 4000000, 1, 0, 6, 6, { req: 'power1', crew: 2, note: 'Odhad bez zdroje: malý roštový kotel s parní turbínou, asi 4 000 USD za kW.' });
+M('power_20', 'm_power', 'Uhelná elektrárna 20 MW (práškový kotel)', 'new', 60000000, 20, 0, 14, 12, { req: 'power2', crew: 8, note: 'Odhad bez zdroje: blok 20 MW, asi 3 000 USD za kW.' });
 
 // Logistika a budovy (ceny = odhad stavebních nákladů)
 // Silnice: road = třída (1 až 3), speed = rychlost aut v dlaždicích za sekundu (herní hodnota, stejně jako rychlost dopravníku). Ceny za metr jsou odhady bez zdroje.
@@ -205,12 +216,13 @@ export const LOGI = {
   floor: { id: 'floor', name: 'Čistý prostor ISO 5', usd: PRICES.cleanroom_iso5_m2?.usd ?? 6000, fact: PRICES.cleanroom_iso5_m2?.fact, note: PRICES.cleanroom_iso5_m2?.note, src: PRICES.cleanroom_iso5_m2?.src, w: 1, h: 1, req: ['fab200', 'pkg2'], what: 'Podlaha čistého prostoru (třída 100) uvnitř haly; pokládá se tažením obdélníku. Stroje fabu 200 a 300 mm bez ní neběží. Cena za 1 m².' },
 };
 
-// Auta: jezdí sama po silnici od dolu nebo pece k cíli (nekupují se; usd je jen orientační odhad ceny vozu). cap = nosnost v tunách.
-const car = (id, name, usd, cap, req, note) => { const p = PRICES[id]; return { id, name, usd: Math.round(p?.usd ?? usd), cap, req, fact: p?.fact ?? 'estimate', src: p?.src ?? null, note: p?.note ?? note }; };
+// Auta: jezdí sama po silnici od dolu nebo pece k cíli; kupují se sama za cenu vozu, když je na ně peněz dost. cap = nosnost v tunách.
+// l100 = spotřeba nafty v litrech na 100 km, wear = opotřebení a servis v USD na km (obojí odhad bez zdroje); km = provoz celkem v USD na km.
+const car = (id, name, usd, cap, req, note, l100, wear) => { const p = PRICES[id]; return { id, name, usd: Math.round(p?.usd ?? usd), cap, req, fact: p?.fact ?? 'estimate', src: p?.src ?? null, note: p?.note ?? note, l100, wear, km: Math.round(((l100 / 100) * DIESEL.usd + wear) * 100) / 100 }; };
 export const CARS = {
-  car_pickup: car('car_pickup', 'Starý ojetý pick-up (nosnost 1 t)', 3000, 1, 'road1', 'Odhad ceny hodně ojetého vozu.'),
-  car_truck: car('car_truck', 'Ojetý sklápěč (nosnost 5 t)', 28000, 5, 'car2', 'Odhad ceny ojetého lehkého nákladního sklápěče.'),
-  car_dump: car('car_dump', 'Kloubový dampr Volvo A30G (29 t)', 450000, 29, 'car3', 'Odhad ceny nového stroje.'),
+  car_pickup: car('car_pickup', 'Starý ojetý pick-up (nosnost 1 t)', 3000, 1, 'road1', 'Odhad ceny hodně ojetého vozu.', 12, 0.12),
+  car_truck: car('car_truck', 'Ojetý sklápěč (nosnost 5 t)', 28000, 5, 'car2', 'Odhad ceny ojetého lehkého nákladního sklápěče.', 25, 0.3),
+  car_dump: car('car_dump', 'Kloubový dampr Volvo A30G (29 t)', 450000, 29, 'car3', 'Odhad ceny nového stroje.', 90, 1.5),
 };
 // Odběratelé surovin na mapě. SPOTS: [druh, x, y, násobek ceny, jméno]; vzdálenější platí víc. Každý odběratel platí aspoň ceníkovou cenu, tedy víc než Trh (85 %).
 export const BUYERS = {
@@ -248,6 +260,8 @@ I('spoil', 'Hlušina (kamenivo)', 10, 't', { cat: 'Suroviny', depth: 2000, shape
 I('glass', 'Sklo (ploché a obalové)', 160, 't', { cat: 'Výrobky', depth: 300, shape: 'box', col: '#9fd3e6', buy: false });
 I('glassware', 'Foukané sklo (ruční výroba)', 1000, '100 kg', { cat: 'Výrobky', depth: 30, shape: 'box', col: '#bfe6f2', buy: false, note: 'Odhad bez zdroje: velkoobchodní cena ručně foukaného užitkového skla kolem 10 USD za kilogram.' });
 const si = (id, name, usd, pack, depth, shape, col) => I(id, name, usd, pack, { cat: 'Křemík', depth, shape, col });
+// Spotřební materiál fabu (rezist, plyny, suspenze, terče) chodí do strojů potrubím z centrálního rozvodu, takže se bere rovnou ze Skladu.
+I('fabchem', 'Chemie a plyny pro fab (rezist, plyny, suspenze, terče)', 1000, 'zásoba za 1 000 $', { cat: 'Spotřební', depth: 1000, shape: 'box', col: '#7fb3d5', sell: false, note: 'Herní hodnota: jedno balení je spotřební materiál fabu za 1 000 USD; kolik ho který krok spotřebuje, je herní odhad.' });
 si('mgsi', 'Metalurgický křemík (98–99 %)', 2800, 't', 60, 'ore', '#6c7480'); si('polysi', 'Polykřemík 9N–11N', 3000, '100 kg', 80, 'ore', '#aeb9c9');
 si('ingot200', 'Monokrystal CZ 200 mm', 30000, 'ingot ~100 kg', 4, 'ingot', '#7f8a99'); si('ingot300', 'Monokrystal CZ 300 mm', 60000, 'ingot ~330 kg', 4, 'ingot', '#93a0b3');
 I('wafer100', 'Wafery 100 mm s oxidem a polykřemíkem', 225, '5 ks', { cat: 'Křemík', depth: 20, shape: 'foup', col: '#c9d2de', per: 0.2, why: 'balení 5 ks přepočtené z ceny 25 ks' });

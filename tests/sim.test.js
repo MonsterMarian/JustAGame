@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, place, remove, removeGround, tick, at, key, serialize, deserialize, revenue, buy, sell, research, tapeout, d0Of, canPlace, oreAt, survey, pathOf, planRoad, buildRoad, capOf, needOf, staffed, boost, setStaff, upgrade, upgradeCost, swaps, WAGE_DAY, RESERVE, MAXCARS, SURF_T } from '../src/sim.js';
-import { MODELS, ITEMS, CHIPS, KINDS, LOGI, CARS } from '../data/catalog.js';
+import { newGame, place, remove, removeGround, tick, at, key, serialize, deserialize, revenue, buy, sell, research, tapeout, d0Of, canPlace, oreAt, survey, pathOf, planRoad, buildRoad, capOf, needOf, staffed, boost, setStaff, upgrade, upgradeCost, swaps, WAGE_DAY, RESERVE, MAXCARS, SURF_T,
+  hoursOf, grade, setMaint, repairCost, statusOf, GRID_MWH, SLOPE_K, DAY, DEAL_BONUS } from '../src/sim.js';
+import { MODELS, ITEMS, CHIPS, KINDS, LOGI, CARS, COAL_PER_MWH, FEED_USD } from '../data/catalog.js';
 import { ROUTES, RESEARCH, MISSIONS, canDo } from '../data/routes.js';
 
 const run = (s, seconds, dt = 1 / 20) => { for (let i = 0; i < seconds / dt; i++) tick(s, dt); };
@@ -165,13 +166,14 @@ test('každou ze všech tras jde dokončit: stroje z katalogu kolem smyčky, dí
     const qty = r.ops.reduce((a, op) => a + Object.values(op.in ?? {}).reduce((p, q) => p + q, 0), 0);
     const limit = (r.ops.reduce((a, op, n) => a + op.h / speed(best[n]), 0) * 6 * 4 + r.ops.length * (ring.length / 6 + 5) + qty * 6 + 300) * 12; // práce s rezervou + objezdy smyčky + dovoz dílů
     let i = 0;
-    for (; i < limit && !s.made[target]; i++) {
+    const done = () => (r.power ? s.gen >= r.power : s.made[target]); // elektrárna nic nevyrábí do Skladu, plní zásobník proudu
+    for (; i < limit && !done(); i++) {
       if (i % 12 === 0) for (const b of ring) if (b.it && !ITEMS[b.it].wip && !inputs.has(b.it)) b.it = null; // hotové kusy odebírá zkouška
       // díly přijíždějí po smyčce, nejvýš dva kusy od každého (víc by smyčku zaplavilo)
       if (i % 12 === 0) for (const it of inputs) if (ring.filter((b) => b.it === it).length < 2) { const f = ring.find((b) => !b.it); if (f) f.it = it; }
       tick(s, 1 / 12);
     }
-    assert.ok(s.made[target] >= 1, `${r.id}: ${target} nevzniklo (rozpracováno ${JSON.stringify(s.wip)}, stav strojů ${s.list.filter((b) => b.k === 'machine').map((b) => `${b.model}:${b.st}${b.miss ? '/' + b.miss : ''}`).join(' ')})`);
+    assert.ok(done(), `${r.id}: ${target} nevzniklo (rozpracováno ${JSON.stringify(s.wip)}, stav strojů ${s.list.filter((b) => b.k === 'machine').map((b) => `${b.model}:${b.st}${b.miss ? '/' + b.miss : ''}`).join(' ')})`);
   }
 });
 
@@ -226,10 +228,12 @@ test('cesta se navrhne mezi dvěma body a auta přijedou sama; sklárna u Skladu
   assert.equal(planRoad(s, 'road1', { x: 22, y: -17 }, { x: 23, y: -16 }), null, 'z budovy do téže budovy cesta nevede');
   assert.equal(canPlace(s, 'quarry_hand', ...plan.tiles[10]), 'Na silnici stavět nejde');
   const trips = (sec) => { const a = s.got.quartz ?? 0; q.out = Array(40).fill('quartz'); for (let n = 0; n < sec * 12; n++) { tick(s, 1 / 12); if (q.out.length < 10) q.out.push('quartz'); } return s.got.quartz - a; }; // hromada pořád plná: měří se jen doprava
-  const slow = trips(600);
+  s.money = 40000; // na čtyři auta s rezervou
+  const m0 = s.money, slow = trips(600);
   assert.ok(slow >= 60 && q.cars.every((c) => !c.to || c.to[0] === hq.x), `po polní cestě do Skladu ${slow} t`);
   assert.ok(q.cars.length === MAXCARS && q.cars.every((c) => c.m === 'car_pickup'), 'auta přibyla sama, když hromada rostla');
-  assert.ok((s.inv.quartz ?? 0) <= 5 && s.sold.quartz > 0 && s.money > 15000 - plan.usd, 'bez pece se křemen prodává celý: těžba vydělává');
+  const carUsd = MAXCARS * CARS.car_pickup.usd;
+  assert.ok((s.inv.quartz ?? 0) <= 5 && s.sold.quartz > 0 && s.money > m0 - carUsd, `bez pece se křemen prodává celý: těžba vydělává i po nákupu aut (${Math.round(s.money - m0 + carUsd)} $)`);
   s.money = 200000;
   const [gx, gy] = [[3, -1], [-6, -1], [-1, 3], [-1, -6]].find(([x, y]) => !canPlace(s, 'glass_pot', x, y)); // volné místo těsně u Skladu
   const g = must(place(s, 'glass_pot', gx, gy));
@@ -406,7 +410,7 @@ test('průzkumný vrt odkryje patra a hlubinný důl se k nerostu prorazí; hlou
   run(s, 6 * 60, 1 / 12);
   assert.ok(m.st === 'run' && s.made.ore_cu > 100, `měď ${s.made.ore_cu} t`);
   assert.ok(money - s.money > 50 * 6000 * 0.9, 'ražba dalších 50 m stála peníze');
-  run(s, 6 * 300, 1 / 12);
+  for (let i = 0; i < 12 * 6 * 400 && m.st !== 'empty'; i++) tick(s, 1 / 12); // i s opravami po poruchách
   assert.equal(m.st, 'empty');
   assert.equal(s.made.ore_cu, 49 * 150);
   const small = must(place(s, 'drill_small', 120, 98)); // malá souprava dosáhne jen do 100 m
@@ -431,4 +435,111 @@ test('uložení a načtení zachová rozehranou hru; zbourání vrací peníze',
   assert.ok(!('zrusena' in s3.inv) && at(s3, 40, 40).it === null);
   const before = s.money;
   assert.ok(remove(s, m) && s.money === before + MODELS.pnp_lumen.usd && !at(s, 5, 5));
+});
+
+test('elektrárna: vlastní proud z uhlí jde nejdřív do strojů, přebytek se prodá do sítě', () => {
+  const s = dilna(6);
+  s.money = 1e7;
+  const reflow = at(s, -4, -1);
+  assert.equal(reflow.model, 'reflow_t962a');
+  Object.assign(reflow, { job: { r: 'arduino_uno', i: 2, t: 0, T: 1e9 } }); s.mwh = 1;
+  run(s, 6, 1 / 12); // jedna hodina práce stroje s příkonem 1,5 kW
+  assert.ok(Math.abs(s.mwh - (1 - MODELS.reflow_t962a.kw / 1000)) < 1e-6, `ze zásobníku ubylo ${1 - s.mwh} MWh`);
+  reflow.job = null;
+  s.pts = 9;
+  assert.ok(research(s, 'power1'));
+  const p = must(place(s, 'power_1', 3, -3)); // těsně u Skladu: uhlí si bere sama
+  assert.ok(p.prod === 'power' && staffed(p) === MODELS.power_1.crew);
+  setStaff(s, p, 99);
+  s.inv.coal = 200; s.autoSell.coal = false; s.mwh = 0;
+  run(s, 6 * 10, 1 / 12);
+  assert.ok(s.gen >= 8 && s.gen <= 10.5, `za 10 hodin ${s.gen} MWh z 1 MW`);
+  assert.ok(Math.abs(200 - s.inv.coal - (p.buf.coal ?? 0) - s.gen * COAL_PER_MWH) < COAL_PER_MWH + 1e-6, 'na MWh se spálí COAL_PER_MWH tun uhlí');
+  const m0 = s.money;
+  run(s, 6 * 20, 1 / 12);
+  assert.ok(s.mwh <= GRID_MWH + 1e-9 && s.gen > GRID_MWH, 'zásobník má strop');
+  assert.ok(s.rateIn > 0 && FEED_USD > 0 && s.money > m0 - 3 * WAGE_DAY * 2, 'přebytek se prodává');
+});
+
+test('poruchy: stroj se po odpracovaných hodinách porouchá, opravuje se a údržbář poruchy zředí', () => {
+  const s = newGame({ seed: 4 });
+  s.money = 1e7;
+  const q = must(place(s, 'quarry_hand', 22, -17));
+  setStaff(s, q, 99);
+  let down = 0, sawText = '';
+  const work = (hours) => { for (let i = 0; i < hours * 6 * 12; i++) { q.out.length = 0; tick(s, 1 / 12); if (q.st === 'broken') { down++; sawText ||= statusOf(s, q); } } };
+  work(1500);
+  const f1 = q.fails ?? 0;
+  assert.ok(f1 >= 1 && f1 <= 7, `bez údržby ${f1} poruch za 1 500 h`);
+  assert.ok(down > 0 && sawText.startsWith('Porucha') && repairCost(q) === Math.round(MODELS.quarry_hand.usd * 0.02));
+  assert.ok(setMaint(s, q, true));
+  work(1500);
+  assert.ok((q.fails - f1) < f1 || f1 <= 1, `s údržbářem ${q.fails - f1} poruch`);
+  const s2 = newGame({ seed: 4 }), q2 = must(place(s2, 'quarry_hand', 22, -17));
+  setStaff(s2, q2, 99); s2.money = 1e7;
+  for (let i = 0; i < 1500 * 6 * 12; i++) { q2.out.length = 0; tick(s2, 1 / 12); }
+  assert.equal(q2.fails, f1, 'stejná hra = stejné poruchy');
+});
+
+test('výroba v halách má lidi a mzdy, fab bere chemii ze Skladu a sám ji dokupuje', () => {
+  const s = dilna(8);
+  s.pts = 9;
+  assert.ok(research(s, 'fab0') && s.autoBuy.fabchem === 10, 'po odemčení fabu se chemie dokupuje sama');
+  assert.ok(ROUTES.fab_i4004.ops.every((op) => op.opex === 0 && op.chem > 0), 've fabu je spotřební materiál zboží');
+  s.autoBuy = {}; s.inv.fabchem = 0; s.inv.wafer100 = 5; s.tape.i4004 = true;
+  const w = must(place(s, 'wet_hood', 3, -3));
+  w.prod = 'fab_i4004';
+  assert.ok(MODELS.wet_hood.crew === 1 && staffed(w) === 3 && hoursOf(w) === 24, 'výroba začíná na třech směnách');
+  run(s, 3);
+  assert.ok(w.st === 'miss' && w.miss === 'fabchem' && !w.job, 'bez chemie stojí');
+  s.inv.fabchem = 1;
+  const m0 = s.money;
+  run(s, 3);
+  assert.ok(w.job && s.inv.fabchem < 1 && s.money < m0, 'chemie se spotřebovala a lidé dostávají mzdu');
+  setStaff(s, w, 0); w.job = null;
+  run(s, 1);
+  assert.equal(w.st, 'staff');
+});
+
+test('auta se kupují sama s rezervou, jezdí za naftu a ve svahu je silnice dražší', () => {
+  const s = newGame({ seed: 2 });
+  const q = must(place(s, 'quarry_hand', 22, -17));
+  setStaff(s, q, 99);
+  assert.ok(buildRoad(s, 'road1', planRoad(s, 'road1', { x: 22, y: -17 }, { x: 0, y: 0 })));
+  const feed = (sec) => { for (let i = 0; i < 12 * sec; i++) { tick(s, 1 / 12); if (q.out.length < 30) q.out.push('quartz'); } };
+  s.money = 100;
+  feed(5);
+  assert.ok(!q.cars.length && q.carWait, 'bez peněz auto nepřijede a panel to řekne');
+  s.money = 5000;
+  feed(300);
+  assert.equal(q.cars.length, 1, 'první auto se koupí, na další není rezerva');
+  assert.ok(CARS.car_pickup.km > 0 && CARS.car_dump.km > CARS.car_truck.km);
+  const money = s.money, cars = q.cars.length;
+  assert.ok(remove(s, q) && s.money === money + MODELS.quarry_hand.usd + cars * CARS.car_pickup.usd, 'auta se při zbourání prodají');
+  // svah: najdi dlaždici v kopci
+  let hill = null;
+  for (let x = 150; x < 600 && !hill; x += 3) for (let y = -300; y < 300 && !hill; y += 3) if (grade(s, x, y) > 0.05 && s._world.terrain(x, y) !== 0 && !at(s, x, y)) hill = [x, y];
+  s.money = 1e6; s.pts = 9;
+  const m1 = s.money;
+  must(place(s, 'road1', ...hill));
+  assert.ok(Math.abs(m1 - s.money - LOGI.road1.usd * (1 + SLOPE_K * grade(s, ...hill))) < 1e-6, `ve sklonu ${Math.round(grade(s, ...hill) * 100)} % stojí metr ${Math.round(m1 - s.money)} $`);
+  assert.ok(removeGround(s, ...hill) && Math.abs(s.money - m1) < 1e-6, 'zbourání vrací totéž');
+});
+
+test('zakázky, průběh peněz a stará uložená hra', () => {
+  const s = newGame({ seed: 2, sandbox: true });
+  s.made.coal = 100;
+  run(s, DAY + 2, 1 / 12);
+  const d = s.deal, npc = s.list.find((b) => b.k === 'npc' && b.x === d?.x && b.y === d?.y);
+  assert.ok(d && d.it === 'coal' && d.n === 20 && npc?.t === 'power' && d.bonus === Math.round(d.n * ITEMS.coal.usd * npc.mul * DEAL_BONUS), `zakázka ${JSON.stringify(d)}`);
+  assert.ok(s.hist.length >= 20, 'průběh peněz se zaznamenává po hodinách');
+  const pts = s.pts;
+  for (let i = 0; i < d.n; i++) { const t = must(place(s, 'belt', npc.x - 1, npc.y, 0)); t.it = 'coal'; t.p = 1; tick(s, 1 / 12); remove(s, t); } // uhlí po dopravníku přímo odběrateli
+  run(s, 1);
+  assert.ok(!s.deal && s.pts >= pts + 1 && s._fx.some((f) => f.deal === 'done' && f.usd === d.bonus), 'splněná zakázka přidá bod a prémii');
+  const old = JSON.parse(serialize(s));
+  for (const k of ['mwh', 'gen', 'hist', 'deal', 'dealAt']) delete old[k];
+  const s2 = deserialize(JSON.stringify(old));
+  run(s2, 1);
+  assert.ok(s2.mwh === 0 && s2.hist.length >= 1 && s2.deal === null, 'stará hra dostane výchozí hodnoty');
 });

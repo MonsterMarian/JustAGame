@@ -1,6 +1,6 @@
 // Simulace hry: stav, stavění, dopravníky, stroje, těžba, sklad a trh. Bez DOM – běží i v testech (node --test).
 import { makeWorld, ORES, T, LEVELS, LEVEL_M } from './world.js';
-import { MODELS, LOGI, ITEMS, CHIPS, KINDS, HOUR, KWH_USD, SELL, CARS, BUYERS, SPOTS, WAGE as PRICES_WAGE, yieldOf } from '../data/catalog.js';
+import { MODELS, LOGI, ITEMS, CHIPS, KINDS, HOUR, KWH_USD, FEED_USD, SELL, CARS, BUYERS, SPOTS, WAGE as PRICES_WAGE, yieldOf } from '../data/catalog.js';
 import { ROUTES, RESEARCH, QUESTS, MISSIONS, FAB, USERS, STARTS, canDo } from '../data/routes.js';
 
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1]; // směr d: 0 východ, 1 jih, 2 západ, 3 sever
@@ -15,7 +15,8 @@ const SINK_MH = 1; // hloubení dolu v metrech za hodinu (herní zrychlení; cen
 // Průměrný výkon za herní hodinu = výkon × (odpracované hodiny / 24) × úroveň. Jedna směna = crew lidí.
 export const WAGE_DAY = PRICES_WAGE; // mzda jednoho člověka za osmihodinovou směnu v USD; platí se jen za dny, kdy budova opravdu pracuje
 export const UPG = [1.5, 3, 6]; // cena další úrovně v násobcích ceny budovy (herní hodnota); každá úroveň přidá polovinu základního výkonu
-export const staffed = (b) => b.staff ?? MODELS[b.model].crew ?? 0;
+const indoorM = (m) => KINDS[m.kind].cat !== 'Suroviny';
+export const staffed = (b) => { const m = MODELS[b.model]; return b.staff ?? (m.crew ?? 0) * (indoorM(m) ? 3 : 1); }; // výroba v halách začíná na třech směnách (jede nepřetržitě), těžba a pece na jedné
 export const SHIFT_H = 8;
 export const hoursOf = (b) => { const c = MODELS[b.model].crew; return c ? Math.min(24, (SHIFT_H * staffed(b)) / c) : 24; }; // kolik hodin denně budova pracuje
 export const boost = (b) => (hoursOf(b) / 24) * (1 + 0.5 * (b.lv ?? 0));
@@ -32,6 +33,27 @@ export function upgrade(s, b) {
   if (!usd || !pay(s, usd, true)) return false;
   b.lv = (b.lv ?? 0) + 1;
   return true;
+}
+// Poruchy: stroj se po odpracovaných hodinách porouchá; oprava trvá a něco stojí. Údržbář (b.mt) prodlouží dobu do poruchy třikrát a bere mzdu jednoho člověka.
+// MTBF, doba a cena opravy jsou herní hodnoty; kdy přesně se stroj porouchá, je náhoda daná místem stroje (stejná hra = stejné poruchy).
+export const MTBF = 500, FIX_H = 8, FIX_K = 0.02;
+export const repairCost = (b) => Math.round(MODELS[b.model].usd * FIX_K);
+const failAt = (s, b) => MTBF * (b.mt ? 3 : 1) * (0.5 + s._world.rnd(b.x, b.y, 900 + (b.fails ?? 0)));
+function wear(s, b, h) { // h = herní hodiny práce
+  if (b.mt) { const w = (WAGE_DAY / SHIFT_H) * h; s.money -= w; s._out += w; } // údržbář na každou odpracovanou směnu
+  b.wear = (b.wear ?? 0) + h;
+  if (b.wear < (b.mtbf ??= failAt(s, b))) return;
+  b.wear = 0; b.fails = (b.fails ?? 0) + 1; b.mtbf = failAt(s, b); b.fix = FIX_H;
+  const usd = repairCost(b); s.money -= usd; s._out += usd; // oprava se platí i na dluh, jako mzdy: stroj se jinak nerozjede
+  if (s._fx.length < 40) s._fx.push({ broke: b.model, usd });
+}
+export function setMaint(s, b, on) { if (!MODELS[b?.model]) return false; b.mt = !!on; b.mtbf = null; return true; }
+// Elektřina: spotřeba se bere nejdřív ze zásobníku vlastních elektráren (s.mwh), zbytek se platí síti. Přebytek nad GRID_MWH se prodá do sítě (herní hodnota).
+export const GRID_MWH = 20;
+function power(s, kw, h) {
+  const need = (kw * h) / 1000, own = Math.min(need, s.mwh);
+  s.mwh -= own;
+  const usd = (need - own) * 1000 * KWH_USD; s.money -= usd; s._out += usd;
 }
 const wage = (s, b, h) => { const w = (WAGE_DAY / 24) * staffed(b) * h; s.money -= w; s._out += w; }; // WAGE_DAY je mzda za jednu osmihodinovou směnu; rozpočítá se do celého dne // jako elektřina: strhává se průběžně, výrobu nezastaví
 // Výměna za lepší stroj téhož druhu a stejného půdorysu: platí se rozdíl, hromada, auta i cíl zůstávají. Vrací null, nebo důvod, proč to nejde.
@@ -66,7 +88,9 @@ export function newGame({ seed = (Math.random() * 1e9) | 0, sandbox = false, lev
   const L = MISSIONS.find((l) => l.id === level) ?? MISSIONS.at(-1); // úroveň určuje, s čím se začíná
   // Začíná se od mála: Sklad, pár tisíc dolarů, ruční lom, polní cesta, pick-up a malá sklárna. Zbytek odemyká strom rozvoje.
   const s = { v: 3, seed, sandbox, level: L.id, won: false, t: 0, money: sandbox ? 1e12 : L.money, list: [], floor: [], hall: [], road: [], dug: {}, guide: L.guide === 1 ? 0 : null, inv: {}, autoSell: {}, autoBuy: {}, sold: {},
-    research: [...L.research], pts: L.pts ?? 0, fix: 1, lvl: 0, xp: 0, out: {}, tape: {}, learn: {}, yieldAvg: {}, made: {}, got: {}, quest: 0, rateIn: 0, rateOut: 0 };
+    research: [...L.research], pts: L.pts ?? 0, fix: 1, lvl: 0, xp: 0, out: {}, tape: {}, learn: {}, yieldAvg: {}, made: {}, got: {}, quest: 0, rateIn: 0, rateOut: 0,
+    mwh: 0, gen: 0, hist: [], deal: null, dealAt: DAY };
+  if (sandbox) s.autoBuy.fabchem = 10;
   init(s);
   const hq = { k: 'hub', hq: true, x: -3, y: -3, w: 6, h: 6 };
   s.list.push(hq); occupy(s, hq);
@@ -131,6 +155,9 @@ export function deserialize(json) {
     if (b.cars) b.cars = b.cars.filter((c) => CARS[c.m] && (!c.it || ITEMS[c.it]));
     known(b.buf);
   }
+  // hra uložená před elektrárnami, zakázkami a chemií pro fab
+  s.mwh ??= 0; s.gen ??= 0; s.hist ??= []; s.deal ??= null; s.dealAt ??= s.t + DAY;
+  if (s.sandbox || s.research.includes('fab0')) s.autoBuy.fabchem ??= 10;
   init(s);
   return s;
 }
@@ -171,6 +198,8 @@ export const priceNow = (s, it, k = SELL) => ITEMS[it].usd * k * Math.min(1, ITE
 function sellTo(s, npc, it, n) { // prodej odběrateli na mapě
   const r = revenue(s, it, n, npc.mul);
   s.sold[it] = (s.sold[it] ?? 0) + n; s.out[it] = (s.out[it] ?? 0) + n; earn(s, r);
+  const d = s.deal;
+  if (d && d.it === it && d.x === npc.x && d.y === npc.y) d.got += n;
   if (s._fx.length < 40) s._fx.push({ it, usd: r });
 }
 export function sell(s, it, q) {
@@ -187,10 +216,33 @@ function market(s, dt) {
   for (const it in s.autoBuy) { const want = s.autoBuy[it] - (s.inv[it] ?? 0); if (want > 0) buy(s, it, Math.min(want, s.sandbox ? want : Math.floor(s.money / ITEMS[it].usd))); }
   for (const it in s.autoSell) if (s.autoSell[it] && !s.autoBuy[it]) sell(s, it, (s.inv[it] ?? 0) - (ITEMS[it].cat === 'Suroviny' && s._act.some((b) => b.k === 'machine' && ROUTES[b.prod]?.ops.some((op) => op.in?.[it])) ? RESERVE : 0)); // surovinu, kterou spotřebovává stojící pec, si Sklad nechává v zásobě
   const a = Math.min(1, dt / (DAY / 4)); // klouzavý průměr příjmů a výdajů v USD za den
+  if (s.mwh > GRID_MWH) { earn(s, (s.mwh - GRID_MWH) * FEED_USD); s.mwh = GRID_MWH; } // přebytek proudu se prodá do sítě
   s.rateIn += ((s._in / dt) * DAY - s.rateIn) * a; s.rateOut += ((s._out / dt) * DAY - s.rateOut) * a; s._in = s._out = 0;
+  if (!s.hist.length || s.t - s.hist.at(-1)[0] >= HOUR) { s.hist.push([Math.round(s.t), Math.round(s.money), Math.round(s.rateIn), Math.round(s.rateOut)]); if (s.hist.length > 24 * 14) s.hist.shift(); } // průběh na dva týdny pro okno Statistiky
+  const day = Math.floor(s.t / DAY);
+  if (s._day !== day) { if (s._d0) s.lastDay = Object.fromEntries(Object.keys(s.made).map((it) => [it, s.made[it] - (s._d0[it] ?? 0)]).filter(([, n]) => n > 0)); s._d0 = { ...s.made }; s._day = day; } // shortcut: výroba za den se počítá až od načtení hry; ukládat snímek, kdyby to vadilo
+  deals(s);
   const L = levelOf(s); // úroveň se plní cíli, volnou hru vedou úkoly
   if (L.goals.length) { if (!s.won && L.goals.every((g) => g[1](s))) { s.won = true; s._fx.push({ win: L.id }); } }
   else while (s.quest < QUESTS.length && QUESTS[s.quest][1](s)) { const [, , usd, pts] = QUESTS[s.quest]; s.money += usd; s.pts += pts; s._fx.push({ quest: s.quest, usd, pts }); s.quest++; }
+}
+// Zakázky: odběratel na mapě chce do termínu množství zboží, které už umíš vyrobit, a za splnění přidá prémii a bod rozvoje.
+// Velikost zakázky, prémie (30 % ceny) a termín jsou herní hodnoty. Nesplněná zakázka jen propadne. Na levné zboží (hlušinu) zakázky nejsou.
+export const DEAL_DAYS = 3, DEAL_BONUS = 0.3;
+function deals(s) {
+  const d = s.deal;
+  if (d) {
+    if (d.got >= d.n) { earn(s, d.bonus); s.pts++; s._fx.push({ deal: 'done', usd: d.bonus }); s.deal = null; s.dealAt = s.t + DAY; }
+    else if (s.t > d.until) { s._fx.push({ deal: 'fail' }); s.deal = null; s.dealAt = s.t + DAY; }
+    return;
+  }
+  if (s.guide != null || s.t < s.dealAt) return; // ve výuce zakázky neruší
+  const opts = s.list.filter((b) => b.k === 'npc').flatMap((b) => BUYERS[b.t].buys.filter((it) => (s.made[it] ?? 0) >= 5 && ITEMS[it].usd >= 50).map((it) => [b, it]));
+  if (!opts.length) return;
+  const [b, it] = opts[Math.floor(s._world.rnd(Math.floor(s.t), 17, 71) * opts.length)];
+  const n = Math.max(10, Math.min(5000, Math.round((s.made[it] ?? 0) * 0.2)));
+  s.deal = { x: b.x, y: b.y, name: b.name, it, n, got: 0, until: s.t + DEAL_DAYS * DAY, bonus: Math.round(n * ITEMS[it].usd * b.mul * DEAL_BONUS) };
+  s._fx.push({ deal: 'new' });
 }
 // Odemknutí ve stromu rozvoje stojí body, ne peníze.
 export function research(s, id) {
@@ -199,6 +251,7 @@ export function research(s, id) {
   if (!s.sandbox) s.pts -= r.pts;
   s.research.push(id);
   if (id === 'smt1') workshop(s);
+  if (id === 'fab0') s.autoBuy.fabchem ??= 10; // chemie pro fab se dokupuje sama, zásobu jde změnit v Trhu
   return true;
 }
 export function tapeout(s, chip) {
@@ -264,7 +317,7 @@ export function remove(s, b) {
   if (!b || b.hq || b.k === 'npc') return false;
   const id = b.k === 'machine' || b.k === 'miner' ? b.model : b.k === 'hub' ? 'depot' : b.k;
   s.money += defOf(id).usd + (b.model ? paidUp(b) : 0); // i vylepšení se vrací v plné ceně
-  for (const c of b.cars ?? []) if (c.n) add(s, c.it, c.n); // náklad aut se vrátí do skladu
+  for (const c of b.cars ?? []) { if (c.n) add(s, c.it, c.n); s.money += CARS[c.m].usd; } // náklad aut se vrátí do skladu a auta se prodají za cenu, za kterou se koupila
   for (const it of [b.it, ...(b.q ?? []), ...(b.out ?? [])]) if (it) { if (ITEMS[it].wip) s.wip[ITEMS[it].route]--; else add(s, it); }
   if (b.job) s.wip[b.job.r]--;
   for (const it in b.buf ?? {}) if (b.buf[it] >= 1) add(s, it, Math.floor(b.buf[it]));
@@ -281,7 +334,17 @@ export function removeGround(s, x, y) {
   return true;
 }
 // Cena stavby. Silnice přes horší silnici stojí jen rozdíl; přes vodu vede jako násep za desetinásobek (herní hodnota).
-const wet = (s, x, y) => (s._world.terrain(x, y) === T.WATER ? 10 : 1);
+// Ve svahu jsou zemní práce dražší: každé procento sklonu přidá desetinu ceny (odhad bez zdroje), takže 10% svah stojí dvojnásobek.
+export const SLOPE_K = 10, CLIMB_K = 8;
+/** Sklon dlaždice (m na m): největší výškový rozdíl mezi jejími rohy. */
+export function grade(s, x, y) {
+  const k = key(x, y), c = (s._gk ??= new Map()).get(k);
+  if (c !== undefined) return c;
+  const H = s._world.height, h = H(x, y), g = Math.max(Math.abs(H(x + 1, y) - h), Math.abs(H(x, y + 1) - h), Math.abs(H(x + 1, y + 1) - h));
+  s._gk.set(k, g);
+  return g;
+}
+const wet = (s, x, y) => (s._world.terrain(x, y) === T.WATER ? 10 : 1) * (1 + SLOPE_K * grade(s, x, y));
 const roadCost = (s, f, x, y) => (f.road ? (f.usd - (s._road.has(key(x, y)) ? LOGI['road' + s._road.get(key(x, y))].usd : 0)) * wet(s, x, y) : f.usd);
 // Sousedé strojů: dopravníky podél stroje (inB), z nich ty, které nemíří do stroje (outB), sousední stroje a sklad.
 function rebuild(s) {
@@ -362,7 +425,7 @@ function resolve(s, b0, tk) {
 
 // ---------------------------------------------------------------- stroje
 // Co stroj potřebuje mít u sebe: fyzické vstupy kroků, které má ve frontě, které zahajuje, nebo které dělal naposled.
-const bulk = (m) => KINDS[MODELS[m.model].kind].u === 't'; // stroje na sypké suroviny: větší zásoba vstupů i hromada výrobků
+const bulk = (m) => KINDS[MODELS[m.model].kind].cat === 'Suroviny'; // pece, hutě a elektrárny: větší zásoba vstupů i hromada výrobků, vozí jim auta
 function needs(m) {
   if (m._need) return m._need;
   const need = {};
@@ -405,7 +468,9 @@ function emit(s, b) {
 const lacking = (m, op) => { for (const it in op.in ?? {}) if ((m.buf[it] ?? 0) < op.in[it] - 1e-9) return it; return null; };
 function begin(s, m, r, i) {
   const op = r.ops[i], md = MODELS[m.model];
+  if (op.chem && (s.inv.fabchem ?? 0) < op.chem) { m.st = 'miss'; m.miss = 'fabchem'; return false; } // chemie jde ze Skladu centrálním rozvodem
   if (!pay(s, op.opex)) { m.st = 'money'; return false; }
+  if (op.chem) s.inv.fabchem -= op.chem;
   for (const it in op.in ?? {}) m.buf[it] -= op.in[it];
   if (i === 0) s.wip[r.id] = (s.wip[r.id] ?? 0) + 1;
   m.job = { r: r.id, i, t: 0, T: (op.h / ((md.rate * boost(m)) / KINDS[md.kind].ref)) * HOUR };
@@ -447,16 +512,18 @@ function finish(s, m) {
     s.learn[c.process] = (s.learn[c.process] ?? 0) + c.lot;
     produce(s, m, 'wl_' + c.id, 1);
   } else if (r.cat === 'pkg') produce(s, m, c.id, (c.gross * (s.yieldAvg[c.id] ?? c.yield0)) / 100);
+  else if (r.power) { s.mwh += r.power; s.gen += r.power; }
   else for (const it in r.out) produce(s, m, it, r.out[it]);
 }
 function stepMachine(s, m, dt) {
   if (m.out.length) emit(s, m);
   pull(s, m);
-  if (m.job) {
+  if (m.fix > 0) { m.fix -= dt / HOUR; m.st = 'broken'; } // porucha: rozpracovaná dávka čeká ve stroji
+  else if (m.job) {
     m.job.t += dt; m.st = 'run';
-    const kwh = (MODELS[m.model].kw * dt) / HOUR * KWH_USD;
-    s.money -= kwh; s._out += kwh;
+    power(s, MODELS[m.model].kw, dt / HOUR);
     if (MODELS[m.model].crew) wage(s, m, dt / HOUR);
+    wear(s, m, (dt / HOUR) * (hoursOf(m) / 24));
     if (m.job.t >= m.job.T) finish(s, m);
   } else if (MODELS[m.model].crew && !staffed(m)) m.st = 'staff';
   else if (m.out.length < (bulk(m) ? PILE : 4)) start(s, m);
@@ -491,14 +558,15 @@ export function survey(s, cx, cy, R, l) {
 function stepMiner(s, b, dt) {
   const md = MODELS[b.model], [cx, cy] = centerOf(b), h = dt / HOUR;
   if (b.out.length) emit(s, b);
+  if (b.fix > 0) { b.fix -= h; b.st = 'broken'; return; }
   if (md.kind === 'm_drill') { // vrt jde dolů a odkrývá patro po patru
     if (b.dep >= md.maxLv * LEVEL_M) { b.st = 'done'; return; }
-    if (pay(s, KINDS.m_drill.opex * md.rate * h)) { b.dep += md.rate * h; b.st = 'run'; } else b.st = 'money';
+    if (pay(s, KINDS.m_drill.opex * md.rate * h)) { b.dep += md.rate * h; b.st = 'run'; wear(s, b, h); } else b.st = 'money';
     return;
   }
   let l = 0, opex = KINDS.m_miner.opex;
   if (md.kind === 'm_shaft') {
-    if (b.dep < b.goal * LEVEL_M) { if (pay(s, md.sink * SINK_MH * h)) { b.dep += SINK_MH * h; b.st = 'sink'; } else b.st = 'money'; return; }
+    if (b.dep < b.goal * LEVEL_M) { if (pay(s, md.sink * SINK_MH * h)) { b.dep += SINK_MH * h; b.st = 'sink'; wear(s, b, h); } else b.st = 'money'; return; }
     l = b.goal; opex = KINDS.m_shaft.opex * (1 + l / 2); // hlouběji je těžba dražší: doprava nahoru, větrání, čerpání vody
   }
   if (b.out.length >= PILE) { b.st = 'full'; return; }
@@ -508,7 +576,7 @@ function stepMiner(s, b, dt) {
     b.cur = [t[0], t[1]]; b.oi = t[2];
   }
   if (md.crew && !staffed(b)) { b.st = 'staff'; return; }
-  b.st = 'run'; b.acc += md.rate * boost(b) * h; wage(s, b, h);
+  b.st = 'run'; b.acc += md.rate * boost(b) * h; wage(s, b, h); wear(s, b, h * (hoursOf(b) / 24));
   if (b.acc < 1) return;
   if (!pay(s, opex)) { b.acc = 1; b.st = 'money'; return; }
   const k = key(b.cur[0], b.cur[1]) * 8 + l, it = ORES[b.oi].id;
@@ -631,10 +699,16 @@ function stepCars(s, b, dt) {
   const sv = `${s._grev}:${s._rev}:${b.oi ?? b.prod}`;
   if (b._sv !== sv) { b._sv = sv; b._sinks = sinks(s, b); for (const c of b.cars ?? []) c._path = null; } // změnila se síť silnic nebo budovy: cíle a cesty znovu
   const cars = (b.cars ??= []);
-  if (b._sinks.some((x) => x.path) && (cars.length ? cars.length < MAXCARS && b.out.length >= 2 * CARS[cars[0].m].cap + 4 && cars.every((c) => c.dir !== 0) : b.out.length >= 2)) cars.push({ m: bestCar(s), p: 0, dir: 0, n: 0, it: null }); // p = poloha na cestě, dir: 0 stojí u zdroje, 1 jede s nákladem, −1 se vrací
+  b.carWait = false;
+  if (b._sinks.some((x) => x.path) && (cars.length ? cars.length < MAXCARS && b.out.length >= 2 * CARS[cars[0].m].cap + 4 && cars.every((c) => c.dir !== 0) : b.out.length >= 2)) { // p = poloha na cestě, dir: 0 stojí u zdroje, 1 jede s nákladem, −1 se vrací
+    const m = bestCar(s), usd = CARS[m].usd; // auto se koupí samo; další auta jen tehdy, když po nákupu zůstane aspoň tolik, kolik stálo (rezerva)
+    if ((!cars.length || s.sandbox || s.money >= 2 * usd) && pay(s, usd, true)) cars.push({ m, p: 0, dir: 0, n: 0, it: null });
+    else b.carWait = !cars.length;
+  }
   for (const c of cars) {
     if (c.dir === 0) { // u zdroje nakládá jeden druh zboží, pro který existuje cíl; odjede plné, se zbytkem z vytěženého ložiska, nebo po čtyřech hodinách
-      if (!c.n) c.m = bestCar(s); // lepší auto ze Stromu se vymění samo
+      const nb = bestCar(s), up = CARS[nb].usd - CARS[c.m].usd; // lepší auto ze Stromu se vymění samo: doplatí se rozdíl, když na něj je dvakrát tolik peněz
+      if (!c.n && nb !== c.m && (s.sandbox || s.money >= 2 * up) && pay(s, up, true)) c.m = nb;
       const cap = CARS[c.m].cap;
       for (let i = 0; i < b.out.length && c.n < cap; i++) if (c.n ? b.out[i] === c.it : b._sinks.some((x) => x.path && x.it === b.out[i])) { c.it = b.out[i]; c.n++; b.out.splice(i--, 1); }
       c.w = c.n ? (c.w ?? 0) + dt : 0;
@@ -658,9 +732,12 @@ function stepCars(s, b, dt) {
       if (!c.n) { c.it = null; c.dir = -1; c.w = 0; } else if (c.w > 20) { c.dir = -1; c.w = 0; } // plno i po čekání: náklad jede zpátky a příště jinam
       continue;
     }
-    const i = Math.max(0, Math.min(end, Math.round(c.p))), [x, y] = path[i];
-    const np = Math.max(0, Math.min(end, c.p + c.dir * LOGI['road' + (s._road.get(key(x, y)) ?? 1)].speed * dt)), ni = Math.round(np);
+    const i = Math.max(0, Math.min(end, Math.round(c.p))), [x, y] = path[i], nx = path[Math.max(0, Math.min(end, i + c.dir))];
+    const up = Math.max(0, s._world.height(nx[0] + 0.5, nx[1] + 0.5) - s._world.height(x + 0.5, y + 0.5)); // do kopce jede pomaleji (herní hodnota: 10% stoupání skoro na polovinu)
+    const np = Math.max(0, Math.min(end, c.p + (c.dir * LOGI['road' + (s._road.get(key(x, y)) ?? 1)].speed * dt) / (1 + CLIMB_K * up))), ni = Math.round(np);
     if (ni !== i && !enter(s, c, path, ni)) { c.blk = (c.blk ?? 0) + dt; if (c.blk < 6) continue; } // pruh před ním je obsazený: čeká (po 6 s projede, pojistka proti zaseknutí)
+    const fuel = (Math.abs(np - c.p) / 1000) * CARS[c.m].km; // nafta a opotřebení za ujeté metry
+    s.money -= fuel; s._out += fuel;
     c.blk = 0; c.p = np;
     if (c.dir < 0 && c.p <= 0) { c.dir = 0; if (s._occ.get(c._cell) === c) s._occ.delete(c._cell); if (!c.n) c.it = null; }
   }
@@ -682,9 +759,10 @@ export function statusOf(s, b) {
     const shaft = MODELS[b.model].kind === 'm_shaft';
     return { run: MODELS[b.model].kind === 'm_drill' ? `Vrtá: ${Math.floor(b.dep)} m z ${MODELS[b.model].maxLv * LEVEL_M} m` : `Těží: ${b.oi ? ITEMS[ORES[b.oi].id].name : ''}${shaft ? `, hloubka ${b.goal * LEVEL_M} m` : ''}`,
       sink: `Hloubí: ${Math.floor(b.dep)} z ${b.goal * LEVEL_M} m`, done: 'Vrt je hotový', full: 'Hromada je plná: není kam vozit. Doveď cestu do Skladu, k peci nebo k odběrateli', money: 'Nedostatek peněz',
-      staff: 'Nikdo tu nepracuje: přidej zaměstnance', empty: shaft ? 'Patro v dosahu je vytěžené: jdi hlouběji nebo postav důl jinde' : 'Ložisko v dosahu je vytěžené: přesuň rypadlo jinam' }[b.st] ?? '';
+      broken: `Porucha: oprava ještě ${Math.ceil(b.fix)} h`, staff: 'Nikdo tu nepracuje: přidej zaměstnance', empty: shaft ? 'Patro v dosahu je vytěžené: jdi hlouběji nebo postav důl jinde' : 'Ložisko v dosahu je vytěžené: přesuň rypadlo jinam' }[b.st] ?? '';
   }
   if (b.k !== 'machine') return '';
+  if (b.st === 'broken') return `Porucha: oprava ještě ${Math.ceil(b.fix)} h`;
   if (b.job) { const r = ROUTES[b.job.r]; return `${r.ops[b.job.i].name} (${Math.round((b.job.t / b.job.T) * 100)} %)`; }
   return { staff: 'Nikdo tu nepracuje: přidej zaměstnance', idle: b.prod || b.q.length ? 'Čeká' : 'Nemá práci: přivez dávku nebo zvol výrobek', miss: `Chybí: ${ITEMS[b.miss]?.name ?? ''}`, money: 'Nedostatek peněz na materiál',
     tape: 'Nejdřív zaplať návrh čipu a sadu masek (okno Čipy)', cap: 'Čeká: v oběhu je dost rozpracovaných dávek', full: bulk(b) ? 'Hotové zboží nemá kam: postav stroj těsně ke Skladu, nebo mu kup auto' : 'Výstup je plný: přistav dopravník nebo další stroj' }[b.st] ?? '';
