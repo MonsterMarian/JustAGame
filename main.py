@@ -10,23 +10,32 @@ from make_your_cpu.importer import build_scenario_map, FAMOUS_GLOBAL_MINES
 
 def main():
     parser = argparse.ArgumentParser(description="MakeYourCPU - Simulátor výroby, těžby a čipů v Pythonu")
-    parser.add_argument("--scenario", choices=["default", "czechia", "global"], default="default",
-                        help="Scénář ložisek: default (procedurální), czechia (Most, Sokolov, Cínovec), global (světová ložiska)")
+    parser.add_argument("--scenario", choices=["earth", "czechia", "global"], default="earth",
+                        help="Scénář ložisek a mapy: earth (výchozí: celá planeta Země i s ČR a světovými revíry)")
     parser.add_argument("--sandbox", action="store_true", help="Spustit v sandbox režimu s neomezenými penězi")
     parser.add_argument("--headless", action="store_true", help="Spustit bez grafického rozhraní (simulační benchmark)")
 
     args = parser.parse_args()
 
-    real_deposits = None
-    if args.scenario == "czechia":
-        cz_mines = [m for m in FAMOUS_GLOBAL_MINES if "Most" in m["name"] or "Sokolov" in m["name"] or "Cínovec" in m["name"] or "Střeleč" in m["name"]]
-        real_deposits = build_scenario_map(center_lat=50.5, center_lon=14.0, scale_km_per_tile=0.5, mines=cz_mines)
-        print(f"Načten scénář České republiky ({len(real_deposits)} reálných ložisek)")
-    elif args.scenario == "global":
-        real_deposits = build_scenario_map(center_lat=0.0, center_lon=0.0, scale_km_per_tile=1.0, mines=FAMOUS_GLOBAL_MINES)
-        print(f"Načten globální scénář světa ({len(real_deposits)} světových ložisek)")
+    print("=================================================================")
+    print("  MakeYourCPU - Simulátor výroby a těžby na reálné Zemi")
+    print("=================================================================")
+    print("Načítám reálnou mapu světa, kontinenty a světová ložiska...")
 
-    sim = Sim(seed=42, sandbox=args.sandbox, real_deposits=real_deposits)
+    # Načtení reálných ložisek nerostů (ČR + Svět)
+    real_deposits = build_scenario_map(center_lat=50.0, center_lon=14.5, scale_km_per_tile=1.0, mines=FAMOUS_GLOBAL_MINES)
+    print(f"Úspěšně načteno {len(real_deposits)} reálných ložisek (Most, Cínovec, Střeleč, Escondida, Pilbara...).")
+    print("Základna hráče (HQ Centrální Sklad) je umístěna v ČR s přístupem ke světovým revírům.")
+
+    sim = Sim(
+        seed=42,
+        sandbox=args.sandbox,
+        real_deposits=real_deposits,
+        center_lat=50.0,
+        center_lon=14.5,
+        scale_km_per_tile=1.0,
+        use_earth_geography=True
+    )
 
     if args.headless:
         print("Spouštím headless simulaci...")

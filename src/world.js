@@ -20,6 +20,15 @@ export const ORES = [
 ];
 // Dvě ložiska poblíž startu, aby šla těžba hned: [index nerostu, x, y, poloměr]
 export const STARTERS = [[1, 23, -16, 7], [2, -27, 19, 7]];
+// Skutečná ložiska nerostů v reálných vzdálenostech (ČR a okolí)
+export const REAL_DEPOSITS = [
+  [1, 50, -56, 12, 'Střeleč (sklářský křemen)'],
+  [2, -61, -57, 14, 'Mostecká uhelná pánev'],
+  [2, -132, -20, 11, 'Sokolovská uhelná pánev'],
+  [7, -52, -81, 9, 'Cínovec (cín a lithium)'],
+  [3, -35, 35, 8, 'Příbram (měď a kovy)'],
+  [1, 7, -69, 8, 'Provodín (křemenné písky)'],
+];
 
 const hash = (x, y, s) => {
   let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1442695041)) | 0;
@@ -46,6 +55,7 @@ export function makeWorld(seed) {
     const t = e < 0.36 ? T.WATER : e < 0.39 ? T.SAND : e > 0.66 ? T.ROCK : m < 0.36 ? T.SAND : m < 0.52 ? T.DRY : T.GRASS;
     if (t === T.WATER || dist < 14) return t;
     for (const [o, sx, sy, r] of STARTERS) if (Math.hypot(x - sx, y - sy) < r - 2 + 3 * hash(x, y, seed + 5)) return t | (o << 3);
+    for (const [o, sx, sy, r] of REAL_DEPOSITS) if (Math.hypot(x - sx, y - sy) < r - 1) return t | (o << 3);
     for (let o = 1; o < ORES.length; o++) {
       const d = ORES[o];
       if (dist >= d.far && fbm(x / d.scale, y / d.scale, seed + 1000 + o * 37) > d.thr) return t | (o << 3);

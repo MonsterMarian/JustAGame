@@ -9,26 +9,57 @@ try:
 except ImportError:
     requests = None
 
-# Reálná světová ložiska s přesnými geografickými souřadnicemi a zásobami
+# Reálná světová ložiska s přesnými geografickými souřadnicemi, komoditou a zásobami
 FAMOUS_GLOBAL_MINES = [
-    # Česká republika a střední Evropa (ideální pro regionální scénář)
-    {"name": "Mostecká uhelná pánev", "lat": 50.518, "lon": 13.642, "ore": "coal", "reserves_t": 850000000, "radius": 14},
-    {"name": "Sokolovská uhelná pánev", "lat": 50.183, "lon": 12.645, "ore": "coal", "reserves_t": 320000000, "radius": 10},
-    {"name": "Cínovec (Zinnwald) Li-Sn ložisko", "lat": 50.732, "lon": 13.766, "ore": "ore_sn", "reserves_t": 120000000, "radius": 8},
-    {"name": "Střeleč (Český ráj - sklářský křemen)", "lat": 50.505, "lon": 15.201, "ore": "quartz", "reserves_t": 450000000, "radius": 12},
-    {"name": "Provodaín (Křemenné písky)", "lat": 50.622, "lon": 14.594, "ore": "quartz", "reserves_t": 180000000, "radius": 8},
+    # --- ČESKÁ REPUBLIKA & STŘEDNÍ EVROPA ---
+    {"name": "Mostecká uhelná pánev (ČR)", "lat": 50.518, "lon": 13.642, "ore": "coal", "reserves_t": 850000000, "radius": 14, "region": "Evropa"},
+    {"name": "Sokolovská uhelná pánev (ČR)", "lat": 50.183, "lon": 12.645, "ore": "coal", "reserves_t": 320000000, "radius": 11, "region": "Evropa"},
+    {"name": "Cínovec Li-Sn ložisko (ČR)", "lat": 50.732, "lon": 13.766, "ore": "ore_sn", "reserves_t": 120000000, "radius": 9, "region": "Evropa"},
+    {"name": "Střeleč Český ráj - sklářský křemen (ČR)", "lat": 50.505, "lon": 15.201, "ore": "quartz", "reserves_t": 450000000, "radius": 12, "region": "Evropa"},
+    {"name": "Provodín křemenné písky (ČR)", "lat": 50.622, "lon": 14.594, "ore": "quartz", "reserves_t": 180000000, "radius": 8, "region": "Evropa"},
+    {"name": "Příbram polymetalický revír (ČR)", "lat": 49.689, "lon": 14.010, "ore": "ore_cu", "reserves_t": 65000000, "radius": 8, "region": "Evropa"},
+    {"name": "Horní Slavkov cín a křemen (ČR)", "lat": 50.138, "lon": 12.809, "ore": "ore_sn", "reserves_t": 45000000, "radius": 7, "region": "Evropa"},
+    {"name": "Lubin / Polkowice měděný revír (Polsko)", "lat": 51.405, "lon": 16.201, "ore": "ore_cu", "reserves_t": 950000000, "radius": 18, "region": "Evropa"},
+    {"name": "Horní Slezsko uhelná pánev (Polsko)", "lat": 50.260, "lon": 19.020, "ore": "coal", "reserves_t": 1100000000, "radius": 20, "region": "Evropa"},
+    {"name": "Ruhr uhelný revír (Německo)", "lat": 51.514, "lon": 7.465, "ore": "coal", "reserves_t": 750000000, "radius": 16, "region": "Evropa"},
+    {"name": "Kiruna železná ruda a apatit (Švédsko)", "lat": 67.855, "lon": 20.225, "ore": "quartz", "reserves_t": 1200000000, "radius": 20, "region": "Evropa"},
+    {"name": "Rio Tinto měděný revír (Španělsko)", "lat": 37.693, "lon": -6.593, "ore": "ore_cu", "reserves_t": 450000000, "radius": 14, "region": "Evropa"},
+    {"name": "Wieliczka a Bochnia solné ložisko (Polsko)", "lat": 49.983, "lon": 20.055, "ore": "halite", "reserves_t": 350000000, "radius": 10, "region": "Evropa"},
 
-    # Globální super-ložiska
-    {"name": "Escondida (Chile - největší měď na světě)", "lat": -24.269, "lon": -69.068, "ore": "ore_cu", "reserves_t": 3200000000, "radius": 24},
-    {"name": "Chuquicamata (Chile - obří povrchový lom mědi)", "lat": -22.316, "lon": -68.903, "ore": "ore_cu", "reserves_t": 1800000000, "radius": 20},
-    {"name": "Pilbara - Mount Whaleback (Austrálie)", "lat": -23.364, "lon": 119.670, "ore": "quartz", "reserves_t": 2500000000, "radius": 26},
-    {"name": "Hunter Valley (Austrálie - uhelný uzel)", "lat": -32.618, "lon": 151.173, "ore": "coal", "reserves_t": 1600000000, "radius": 22},
-    {"name": "Powder River Basin (Wyoming USA - uhelný superlom)", "lat": 44.291, "lon": -105.498, "ore": "coal", "reserves_t": 2800000000, "radius": 25},
-    {"name": "Bingham Canyon (Utah USA - Kennecott Copper)", "lat": 40.522, "lon": -112.151, "ore": "ore_cu", "reserves_t": 1900000000, "radius": 20},
-    {"name": "Witwatersrand Basin (Jihoafrická republika - zlato)", "lat": -26.204, "lon": 28.047, "ore": "ore_au", "reserves_t": 40000000, "radius": 16},
-    {"name": "Salar de Atacama (Chile - lithná a kamenná sůl)", "lat": -23.500, "lon": -68.333, "ore": "halite", "reserves_t": 800000000, "radius": 18},
-    {"name": "Weipa Bauxite Mine (Austrálie - bauxit)", "lat": -12.646, "lon": 141.876, "ore": "bauxite", "reserves_t": 1200000000, "radius": 22},
-    {"name": "Kupferschiefer (Polsko - Lubin/Polkowice měď)", "lat": 51.405, "lon": 16.201, "ore": "ore_cu", "reserves_t": 950000000, "radius": 18},
+    # --- SEVERNÍ AMERIKA ---
+    {"name": "Powder River Basin (Wyoming USA - uhelný gigant)", "lat": 44.291, "lon": -105.498, "ore": "coal", "reserves_t": 2800000000, "radius": 28, "region": "Severní Amerika"},
+    {"name": "Bingham Canyon Kennecott (Utah USA - obří měď)", "lat": 40.522, "lon": -112.151, "ore": "ore_cu", "reserves_t": 1900000000, "radius": 22, "region": "Severní Amerika"},
+    {"name": "Spruce Pine (Severní Karolína USA - ultračistý křemen)", "lat": 35.915, "lon": -82.065, "ore": "quartz", "reserves_t": 600000000, "radius": 15, "region": "Severní Amerika"},
+    {"name": "Carlin Trend (Nevada USA - obří zlato)", "lat": 40.970, "lon": -116.320, "ore": "ore_au", "reserves_t": 85000000, "radius": 18, "region": "Severní Amerika"},
+    {"name": "Sudbury Basin (Kanada - nikl, měď, kovy)", "lat": 46.520, "lon": -81.000, "ore": "ore_cu", "reserves_t": 850000000, "radius": 20, "region": "Severní Amerika"},
+    {"name": "Appalachian Coal Basin (Západní Virginie USA)", "lat": 38.350, "lon": -81.630, "ore": "coal", "reserves_t": 1400000000, "radius": 22, "region": "Severní Amerika"},
+
+    # --- JIŽNÍ AMERIKA ---
+    {"name": "Minera Escondida (Chile - největší měď světa)", "lat": -24.269, "lon": -69.068, "ore": "ore_cu", "reserves_t": 3200000000, "radius": 26, "region": "Jižní Amerika"},
+    {"name": "Chuquicamata (Chile - gigantický měděný lom)", "lat": -22.316, "lon": -68.903, "ore": "ore_cu", "reserves_t": 1800000000, "radius": 22, "region": "Jižní Amerika"},
+    {"name": "Salar de Atacama (Chile - sůl a lithium)", "lat": -23.500, "lon": -68.333, "ore": "halite", "reserves_t": 1200000000, "radius": 24, "region": "Jižní Amerika"},
+    {"name": "Carajás Mine (Brazílie - obří křemeno-železné ložisko)", "lat": -6.050, "lon": -50.300, "ore": "quartz", "reserves_t": 2200000000, "radius": 25, "region": "Jižní Amerika"},
+    {"name": "Cerro Rico de Potosí (Bolívie - cín a kovy)", "lat": -19.619, "lon": -65.749, "ore": "ore_sn", "reserves_t": 340000000, "radius": 16, "region": "Jižní Amerika"},
+
+    # --- AUSTRÁLIE & OCEÁNIE ---
+    {"name": "Pilbara - Mount Whaleback (Austrálie)", "lat": -23.364, "lon": 119.670, "ore": "quartz", "reserves_t": 2500000000, "radius": 26, "region": "Austrálie"},
+    {"name": "Hunter Valley (Austrálie - uhelný superrevír)", "lat": -32.618, "lon": 151.173, "ore": "coal", "reserves_t": 1600000000, "radius": 22, "region": "Austrálie"},
+    {"name": "Super Pit Kalgoorlie (Austrálie - zlato)", "lat": -30.774, "lon": 121.503, "ore": "ore_au", "reserves_t": 60000000, "radius": 18, "region": "Austrálie"},
+    {"name": "Olympic Dam (Jižní Austrálie - měď a zlato)", "lat": -30.435, "lon": 136.887, "ore": "ore_cu", "reserves_t": 1500000000, "radius": 20, "region": "Austrálie"},
+    {"name": "Weipa Bauxite Mine (Austrálie - bauxit/hliník)", "lat": -12.646, "lon": 141.876, "ore": "bauxite", "reserves_t": 1200000000, "radius": 22, "region": "Austrálie"},
+    {"name": "Grasberg Mine (Indonésie - obří měď a zlato)", "lat": -4.055, "lon": 137.114, "ore": "ore_cu", "reserves_t": 2400000000, "radius": 24, "region": "Asie"},
+
+    # --- AFRIKA ---
+    {"name": "Witwatersrand Basin (Jihoafrická republika - zlato)", "lat": -26.204, "lon": 28.047, "ore": "ore_au", "reserves_t": 75000000, "radius": 20, "region": "Afrika"},
+    {"name": "Katanga Copperbelt (Kongo - měď)", "lat": -11.660, "lon": 27.480, "ore": "ore_cu", "reserves_t": 1800000000, "radius": 22, "region": "Afrika"},
+    {"name": "Sishen Iron & Quartz (JAR)", "lat": -27.733, "lon": 22.998, "ore": "quartz", "reserves_t": 950000000, "radius": 18, "region": "Afrika"},
+    {"name": "Boké Bauxite Mine (Guinea - největší bauxit)", "lat": 10.932, "lon": -14.295, "ore": "bauxite", "reserves_t": 2000000000, "radius": 24, "region": "Afrika"},
+
+    # --- ASIE ---
+    {"name": "Oyu Tolgoi (Mongolsko - měď a zlato)", "lat": 43.007, "lon": 106.848, "ore": "ore_cu", "reserves_t": 1600000000, "radius": 20, "region": "Asie"},
+    {"name": "Kuzbass uhelná pánev (Sibiř Rusko)", "lat": 54.340, "lon": 86.420, "ore": "coal", "reserves_t": 2200000000, "radius": 25, "region": "Asie"},
+    {"name": "Muruntau (Uzbekistán - obří povrchové zlato)", "lat": 41.498, "lon": 64.571, "ore": "ore_au", "reserves_t": 95000000, "radius": 18, "region": "Asie"},
+    {"name": "Bayan Obo (Vnitřní Mongolsko - křemen a fluorit)", "lat": 41.798, "lon": 109.969, "ore": "fluorspar", "reserves_t": 800000000, "radius": 18, "region": "Asie"},
 ]
 
 ORE_NAME_MAP = {

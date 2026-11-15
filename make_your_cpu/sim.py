@@ -10,6 +10,7 @@ from .catalog import (
     DEPOT_FEE, GRID_MWH, PILE, MAXCARS, RESERVE, RC_OPEX, UPG, MODS, def_of
 )
 from .world import World, T_WATER, LEVEL_M, SURF_T, DEEP_T
+from .importer import build_scenario_map, FAMOUS_GLOBAL_MINES
 
 DX = [1, 0, -1, 0]
 DY = [0, 1, 0, -1]
@@ -66,7 +67,16 @@ def upgrade_cost(b: dict) -> Optional[int]:
 class Sim:
     """Stav a běh simulace."""
 
-    def __init__(self, seed: int = 1337, sandbox: bool = False, real_deposits: Optional[List[dict]] = None):
+    def __init__(
+        self,
+        seed: int = 1337,
+        sandbox: bool = False,
+        real_deposits: Optional[List[dict]] = None,
+        center_lat: float = 50.0,
+        center_lon: float = 14.5,
+        scale_km_per_tile: float = 1.0,
+        use_earth_geography: bool = True
+    ):
         self.seed = seed
         self.sandbox = sandbox
         self.t = 0.0
@@ -86,7 +96,24 @@ class Sim:
         self._road: Dict[int, int] = {}
         self._hall: set = set()
         self._floor: set = set()
-        self._world = World(seed=seed, real_deposits=real_deposits)
+
+        # Pokud ložiska nejsou specifikována, načtou se reálná ložiska světa
+        if real_deposits is None:
+            real_deposits = build_scenario_map(
+                center_lat=center_lat,
+                center_lon=center_lon,
+                scale_km_per_tile=scale_km_per_tile,
+                mines=FAMOUS_GLOBAL_MINES
+            )
+
+        self._world = World(
+            seed=seed,
+            real_deposits=real_deposits,
+            center_lat=center_lat,
+            center_lon=center_lon,
+            scale_km_per_tile=scale_km_per_tile,
+            use_earth_geography=use_earth_geography
+        )
 
         # Centrální sklad (HQ)
         hq = {"k": "hub", "hq": True, "x": -3, "y": -3, "w": 6, "h": 6, "lv": 0, "mods": []}
