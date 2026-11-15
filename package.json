@@ -1,0 +1,19 @@
+{
+  "name": "make-your-cpu",
+  "productName": "Make Your CPU",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Tovární hra v otevřeném světě: od osazování desek po vlastní CPU z písku. Skutečné stroje, postupy a ceny.",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3"
+  }
+}

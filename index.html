@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:">
+  <title>MAKE YOUR CPU</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }</script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <header id="top">
+    <div class="brand">MAKE YOUR <b>CPU</b></div>
+    <div class="money"><span id="money">0</span><small id="flow"></small></div>
+    <div class="pts" id="pts"><div><b id="ptsn">★ 0</b><small id="ptsnext"></small></div><div class="bar"><i id="ptsbar"></i></div></div>
+    <div id="stock"></div>
+    <div class="clock" id="clock"></div>
+    <div class="speed" id="speed"></div>
+    <nav id="nav"></nav>
+  </header>
+  <aside id="quest"></aside>
+  <aside id="panel" hidden></aside>
+  <div id="toasts"></div>
+  <div id="frame"></div>
+  <footer id="build"><div id="mode"></div><div id="cats"></div><div id="tools"></div></footer>
+  <div id="mini"><div id="viewpad"></div><canvas id="minimap" width="184" height="184"></canvas><div id="coords"></div></div>
+  <div id="tip" hidden></div>
+  <div id="ctag" hidden></div>
+  <div id="title" hidden></div>
+  <div id="modal" hidden><div id="win"></div></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

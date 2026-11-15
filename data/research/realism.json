@@ -1,0 +1,181 @@
+[
+ {
+  "id": "quarry_hand",
+  "unit": "usd: hand-tool set for a crew of 2; rate: t of broken rock per working hour, crew of 2",
+  "year": 2026,
+  "src": "https://webapps.ilo.org/public/spanish/employment/recon/eiip/download/tasas.pdf",
+  "fact": "estimate",
+  "note": "ILO/OIT (Lima 2003, španělské vydání ASIST Technical Brief 2): doporučená norma ručního rozpojování skály 0,8 m³ na dělníka a 8h směnu (Keňa 0,75, Nepál 0,5, Lesotho 0,61); 2 × 0,8 m³ × 2,6 t/m³ ÷ 8 h = 0,52 t/h. Cena nářadí je odhad z výpisů vyhledávače (2 palice à 48, sochor 55, krumpáč 40, kolečko 130, klíny a sekáče ~130, lopata ~30 USD); stránky obchodů nešly otevřít.",
+  "usd": 480
+ },
+ {
+  "id": "rate_quarry_hand",
+  "rate": 0.52,
+  "unit": "t za hodinu práce",
+  "year": 2026,
+  "src": "https://webapps.ilo.org/public/spanish/employment/recon/eiip/download/tasas.pdf",
+  "fact": "estimate",
+  "note": "ILO/OIT (Lima 2003, španělské vydání ASIST Technical Brief 2): doporučená norma ručního rozpojování skály 0,8 m³ na dělníka a 8h směnu (Keňa 0,75, Nepál 0,5, Lesotho 0,61); 2 × 0,8 m³ × 2,6 t/m³ ÷ 8 h = 0,52 t/h. Cena nářadí je odhad z výpisů vyhledávače (2 palice à 48, sochor 55, krumpáč 40, kolečko 130, klíny a sekáče ~130, lopata ~30 USD); stránky obchodů nešly otevřít."
+ },
+ {
+  "id": "rate_miner_u17",
+  "rate": 9,
+  "unit": "t za hodinu práce",
+  "year": 2022,
+  "src": "https://konesilta.fi/wp-content/uploads/2022/08/Kubota-U17-3_a-EN_HD.pdf",
+  "fact": "estimate",
+  "note": "Prospekt Kubota Europe U17-3α: hmotnost 1 650 kg, lžíce 0,04 m³, motor D902 11,8 kW, otoč 9,1 ot/min, nádrž 19 l. Odhad: 0,04 m³ × plnění 0,8 × 180 cyklů/h (cyklus 15 s, 45 min práce za hodinu) = 5,8 m³/h × 1,6 t/m³ ≈ 9 t/h (rozpětí 6–13 t/h). Spotřebu výrobce neuvádí; odhad ~2 l nafty/h."
+ },
+ {
+  "id": "rate_miner_cat320",
+  "rate": 167.5,
+  "unit": "t za hodinu práce",
+  "year": 2024,
+  "src": "https://metso.com/globalassets/portfolio/nordberg-series/brochure-nordberg-c-series-4226-04-24-en-agg-no-ppp-pdf.pdf",
+  "fact": "doc",
+  "note": "Brožura Metso Nordberg C Series (04/2024): čelisťový drtič C106 dává při výstupní štěrbině 70 mm 150–185 t/h (brán střed), při 100 mm 205–265 t/h; platí pro předtříděnou vsázku o hustotě 2,7 t/m³. Bagr Cat 320 (lžíce 1,19 m³, 22,7 t) naloží odhadem ~200 t/h rozstřílené horniny, takže výkon omezuje drtič."
+ },
+ {
+  "id": "glass_pot",
+  "unit": "usd: 1 pot furnace, 200 lb (90.7 kg) of glass; rate: t of glass per working hour",
+  "year": 2026,
+  "src": "https://spiralarts.com/products/invested-pot-furnace-150lb",
+  "fact": "doc",
+  "note": "Spiral Arts (Seattle): Invested Pot Furnace 200 lb na sodnovápenaté sklo, základní cena 40 000 USD (cena je doložená), hořák 150 000 BTU/h. Výkon je odhad: jedna tavba 90,7 kg denně ÷ 8 pracovních hodin = 0,0113 t/h. Menší Paragon Vulcan II (~50 lb) stojí 6 390 USD, větší Day Tank 400 lb od Spiral Arts 52 500 USD.",
+  "usd": 40000
+ },
+ {
+  "id": "rate_glass_pot",
+  "rate": 0.0113,
+  "unit": "t za hodinu práce",
+  "year": 2026,
+  "src": "https://spiralarts.com/products/invested-pot-furnace-150lb",
+  "fact": "estimate",
+  "note": "Spiral Arts (Seattle): Invested Pot Furnace 200 lb na sodnovápenaté sklo, základní cena 40 000 USD (cena je doložená), hořák 150 000 BTU/h. Výkon je odhad: jedna tavba 90,7 kg denně ÷ 8 pracovních hodin = 0,0113 t/h. Menší Paragon Vulcan II (~50 lb) stojí 6 390 USD, větší Day Tank 400 lb od Spiral Arts 52 500 USD."
+ },
+ {
+  "id": "glass_tank",
+  "unit": "usd: 1 continuous container-glass furnace, 80 t/day; rate: t of glass per hour",
+  "year": 2023,
+  "src": "https://www.glass-international.com/news/sun-glass-invests-1-billion-inr-in-indian-glass-production-site",
+  "fact": "doc",
+  "note": "Glass International 24. 8. 2023: Sun Glass (Firozabad, Indie) postavil pec na obalové sklo 80 t/den za více než 1 mld. INR (~11,16 mil. EUR); kurz ČNB 24. 8. 2023 je 1,084 USD/EUR. 80 t ÷ 24 h = 3,33 t/h. Článek neříká, zda částka kryje jen pec; evropské pece jsou řádově dražší (500 t/den ~130 mil. EUR).",
+  "usd": 12100000
+ },
+ {
+  "id": "rate_glass_tank",
+  "rate": 3.33,
+  "unit": "t za hodinu práce",
+  "year": 2023,
+  "src": "https://www.glass-international.com/news/sun-glass-invests-1-billion-inr-in-indian-glass-production-site",
+  "fact": "doc",
+  "note": "Glass International 24. 8. 2023: Sun Glass (Firozabad, Indie) postavil pec na obalové sklo 80 t/den za více než 1 mld. INR (~11,16 mil. EUR); kurz ČNB 24. 8. 2023 je 1,084 USD/EUR. 80 t ÷ 24 h = 3,33 t/h. Článek neříká, zda částka kryje jen pec; evropské pece jsou řádově dražší (500 t/den ~130 mil. EUR)."
+ },
+ {
+  "id": "glass",
+  "unit": "1 t float flat glass 5/6 mm",
+  "year": 2026,
+  "src": "https://www.stats.gov.cn/english/PressRelease/202611/t20261104_1965741.html",
+  "fact": "doc",
+  "note": "Čínský statistický úřad (NBS), 21.–31. 10. 2026: plavené ploché sklo 5/6 mm 1 069,9 CNY/t (tržní cena v oběhu, ne přímo ex-works); kurz ČNB 13. 11. 2026 je 6,671 CNY/USD. Obalové sklo je dražší: Expana 7/2025 uvádí sklenice v USA za 634,96 USD/t.",
+  "usd": 160.38
+ },
+ {
+  "id": "soda_ash",
+  "unit": "1 t soda ash, f.o.b. plant",
+  "year": 2025,
+  "src": "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/files/mis202512-sodaa.pdf",
+  "fact": "doc",
+  "note": "USGS Mineral Industry Surveys, Soda Ash in December 2025: průměrná hodnota produkce sody v USA za rok 2025 byla 158,70 USD/t (143,97 USD/short ton), o 6 % méně než 2024. USGS MCS 2026 uvádí dřívější odhad 150 USD/t, Expana tržní cenu 235 USD/t (7/2025).",
+  "usd": 158.7
+ },
+ {
+  "id": "limestone",
+  "unit": "1 t crushed stone (about 70 % limestone and dolomite)",
+  "year": 2025,
+  "src": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-stone-crushed.pdf",
+  "fact": "doc",
+  "note": "USGS MCS 2026: průměrná jednotková hodnota drceného kameniva v USA 18,50 USD/t (odhad USGS za 2025; 2024: 17,50). Asi 70 % produkce tvoří vápenec a dolomit.",
+  "usd": 18.5
+ },
+ {
+  "id": "glass_batch",
+  "unit": "per 1 t of glass",
+  "year": 2012,
+  "src": "https://impel.eu/contents/libraryfile/FR-2012-04-Annex-3-Proposal-sector-specific-annex-for-the-glass-sector.pdf",
+  "fact": "estimate",
+  "note": "Vsázka (výpočet ze složení 74 % SiO2, 13 % Na2O, 10,5 % CaO dle Wikipedie): ~740 kg křemenného písku, ~222 kg sody, ~187 kg vápence, celkem ~1,15 t (asi 175 kg unikne jako CO2). Energie tavení dle BREF GLS (cituje IMPEL 2012): teoreticky 2,68 GJ/t, float pec 600 t/den 6,48 GJ/t, většina pecí pod 8 GJ/t. Bráno ~6,5 GJ/t = ~240 kg uhlí při 27 GJ/t (224–260 kg pro 29–25 GJ/t)."
+ },
+ {
+  "id": "coal_thermal",
+  "unit": "1 t thermal coal (Newcastle-type benchmark)",
+  "year": 2026,
+  "src": "https://tradingeconomics.com/commodity/coal",
+  "fact": "doc",
+  "note": "Trading Economics: uhlí 145,25 USD/t dne 12. 11. 2026 (kontrakt odvozený od australského Newcastle; stránka benchmark výslovně nejmenuje). Kontrola: IEA uvádí Newcastle FOB 6 000 kcal ~136 USD/t (konec 8/2026), NBS Čína 5 500 kcal 1 029,3 CNY/t = 154 USD/t (10/2026).",
+  "usd": 145.25
+ },
+ {
+  "id": "road1",
+  "unit": "1 m of graded earth road, single lane about 4 m wide",
+  "year": 2026,
+  "src": "https://assets.publishing.service.gov.uk/media/57a08bd7e5274a27b2000dc3/TI_UP_HD_Feb2007_Cost_of_Roads_in_Africa.pdf",
+  "fact": "estimate",
+  "note": "TRL/TI-UP (DFID) 2007: hrubé vodítko 8–10 tis. USD/km zemní cesty v Africe vč. základních objektů (střed 9 USD/m); po inflaci USD ~×1,6 asi 14 USD/m. Kontrola: USFS 1984, lesní odvozní cesta 8 119 USD/míli bez štěrku = 5 USD/m, dnes ~16 USD/m. Šířku zdroje neuvádějí, předpoklad jeden pruh ~4 m.",
+  "usd": 15
+ },
+ {
+  "id": "road2",
+  "unit": "1 m of gravel road, two lanes 7.3 m (24 ft) wide",
+  "year": 2025,
+  "src": "https://www.substrata.us/blog/building-low-cost-unpaved-county-roads",
+  "fact": "estimate",
+  "note": "Substrata (blog dodavatele stabilizace zemin, 6/2025, bez citace zdroje): dvoupruhová štěrková cesta šířky 24 ft (7,3 m) stojí v USA 64–150 tis. USD/míli; střed 107 tis. ÷ 1 609 m = 66 USD/m. Kontrola: TRL 2007 uvádí pro Afriku 10–15 USD/m, FAO (stavba lesních cest, 1997) 27,6–28,9 USD/m při šířce pláně 4,5–6,5 m.",
+  "usd": 66
+ },
+ {
+  "id": "road3",
+  "unit": "1 m of asphalt-paved road, two lanes 7.3 m (2 x 12 ft) wide",
+  "year": 2026,
+  "src": "https://media.ark.org/ardot/2025-CPM-Report.pdf",
+  "fact": "estimate",
+  "note": "ARDOT (Arkansas), Estimated Costs Per Mile, revize 1/2026: asfaltový kryt tl. 2 palce na pruzích 11–12 ft stojí 170 000 USD za míli pruhu; 2 pruhy = 340 tis. USD/míli = 211 USD/m, plus štěrková cesta jako podklad 66 USD/m (road2) = ~278 USD/m. Plnohodnotná nová dvoupruhová silnice (rural collector) vychází na 3,9 mil. USD/míli = 2 423 USD/m.",
+  "usd": 278
+ },
+ {
+  "id": "car_pickup",
+  "unit": "1 used pickup, 2005 Toyota HiLux Single Cab Workmate (about 1 t payload)",
+  "year": 2026,
+  "src": "https://www.carsguide.com.au/toyota/hilux/price/2005",
+  "fact": "doc",
+  "note": "CarsGuide (Austrálie): Toyota HiLux 2005 Single Cab Workmate 2,7 benzin, orientační cena 4 290–6 380 AUD (brán střed 5 335); kurz ČNB 13. 11. 2026 je 0,6786 USD/AUD. Nosnost ~1 t stránka neuvádí. Americký Ford F-350 r. 2005 stojí dle výpisů vyhledávače ~10–13 tis. USD (stránky nešly otevřít).",
+  "usd": 3620
+ },
+ {
+  "id": "car_truck",
+  "unit": "1 used tipper truck, MAN TGL 12.180 (2009), payload 5.89 t",
+  "year": 2026,
+  "src": "https://www.truckscout24.com/tsp/ts-180-29-281",
+  "fact": "doc",
+  "note": "TruckScout24 (aktualizace 11. 6. 2026): MAN TGL 12.180 4x2, třístranný sklápěč, 1. registrace 07/2009, 78 500 km, celková hmotnost 11 990 kg, užitečná 5 890 kg, pevná cena 22 900 EUR bez DPH; kurz ČNB 13. 11. 2026 je 1,1052 USD/EUR.",
+  "usd": 25308
+ },
+ {
+  "id": "car_dump",
+  "unit": "1 used Volvo A30G articulated hauler (2017, 2,509 h), payload 29 t",
+  "year": 2026,
+  "src": "https://www.constructionequipmentguide.com/used-equipment/volvo/off-highway-trucks/a30g/id/48385660",
+  "fact": "doc",
+  "note": "Construction Equipment Guide: Volvo A30G r. v. 2017, 2 509 mth, Charlotte (NC), nabídková cena 393 000 USD. Nosnost 29 000 kg (32 sh tn) a korbu 17,8 m³ potvrzuje web Volvo CE. Nový stroj stojí dle výpisů vyhledávače ~500 tis. USD (ročník 2024 za 501 000 USD).",
+  "usd": 393000
+ },
+ {
+  "id": "wage_day",
+  "unit": "one 8-hour shift, excavating/loading machine operator in surface mining (USA)",
+  "year": 2025,
+  "src": "https://www.onetonline.org/link/localwages/47-5022.00",
+  "fact": "doc",
+  "note": "O*NET OnLine (data BLS OEWS 2025), USA: operátoři rýpadel a nakladačů v povrchové těžbě (SOC 47-5022), medián 27,61 USD/h (10 %: 20,00, 90 %: 39,61); × 8 h = 220,88 USD. BLS 5/2023: průměr 26,68 USD/h, v těžbě nerudných surovin a lomech 25,09 USD/h.",
+  "usd": 220.88
+ }
+]
