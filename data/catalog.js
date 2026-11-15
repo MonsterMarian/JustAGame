@@ -60,7 +60,7 @@ export const UNIT = { wafer: 'waferů/h', unit: 'ks/h', wire: 'drátků/h', ingo
 export const HEAT_RATE = { gj: Math.round(10647 * 1.055056) / 1000, fact: 'doc', src: 'https://www.eia.gov/electricity/annual/html/epa_08_01.html', note: 'EIA, Electric Power Annual, tab. 8.1: průměrná spotřeba tepla uhelných bloků v USA 2025 = 10 647 Btu na kWh.' };
 export const COAL_GJ = 24; // výhřevnost černého uhlí v GJ na tunu (odhad bez zdroje, běžné energetické uhlí 22–26 GJ/t)
 export const COAL_PER_MWH = Math.round((HEAT_RATE.gj / COAL_GJ) * 1000) / 1000; // tuny uhlí na MWh elektřiny
-export const FEED_USD = 40; // výkupní cena přebytku do sítě v USD za MWh (odhad velkoobchodní ceny bez zdroje)
+export const FEED_USD = 47; // výkupní cena přebytku do sítě v USD za MWh (EIA 2025 průměr velkoobchodní ceny v USA ~47 $/MWh)
 // Nafta pro auta: EIA, průměr USA 9. 11. 2026 = 6,127 USD za galon včetně daní.
 export const DIESEL = { usd: Math.round((6.127 / 3.78541) * 1000) / 1000, fact: 'doc', src: 'https://www.eia.gov/petroleum/gasdiesel/', note: 'EIA: průměrná cena nafty v USA 9. 11. 2026 = 6,127 USD za galon (3,785 l) včetně daní.' };
 export const CATS = ['Doprava', 'Logistika', 'Osazování', 'DPS', 'Pasivní', 'Pouzdření', 'Fab', 'Wafery', 'Suroviny'];
@@ -71,11 +71,11 @@ export const CATS = ['Doprava', 'Logistika', 'Osazování', 'DPS', 'Pasivní', '
 // res = rozlišení litografie v nm, clean = musí stát v čistém prostoru.
 export const MODELS = {};
 const M = (id, kind, name, tier, usd, rate, kw, w, h, o = {}) => {
-  let p = PRICES[id];
+  let p = o.own ? undefined : PRICES[id];
   // Cena použitého kusu nepatří k novému stroji: nový zůstane odhadem a doložená cena z bazaru jde do poznámky.
   if (p && tier === 'new' && (/^(použit|odhad typické ceny použit|repas)/i.test(p.note ?? '') || id === 'reflow_1913')) p = { src: p.src, note: `odhad ceny nového stroje; nabídka z druhé ruky nebo z tržiště: ${Math.round(p.usd).toLocaleString('cs')} USD (${p.note})` };
   MODELS[id] = { id, kind, name, tier, usd: p?.usd ?? usd, fact: p?.fact ?? o.fact ?? 'estimate', src: p?.src ?? o.src ?? null, note: p?.note ?? o.note ?? null,
-    rate: PRICES['rate_' + id]?.rate ?? rate, rateFact: PRICES['rate_' + id]?.fact ?? 'estimate', rateSrc: PRICES['rate_' + id]?.src ?? null, rateNote: PRICES['rate_' + id]?.note ?? null, kw, w, h, req: o.req, wafer: o.wafer ?? null, res: o.res ?? null, clean: !!o.clean, reach: o.reach ?? null, maxLv: o.maxLv ?? null, sink: o.sink ?? null, crew: o.crew ?? (KINDS[kind].cat === 'Suroviny' ? null : 1) }; // crew = kolik lidí obsadí jednu směnu (odhad); výrobní stroje v halách obsluhuje jeden člověk na směnu, vrt obsluhu nepočítá
+    rate: PRICES['rate_' + id]?.rate ?? rate, rateFact: PRICES['rate_' + id]?.fact ?? 'estimate', rateSrc: PRICES['rate_' + id]?.src ?? null, rateNote: PRICES['rate_' + id]?.note ?? null, kw, w, h, req: o.req, wafer: o.wafer ?? null, res: o.res ?? null, clean: !!o.clean, reach: o.reach ?? null, maxLv: o.maxLv ?? null, sink: o.sink ?? null, sinkRate: o.sinkRate ?? null, fuel: o.fuel ?? 0, powerPerLv: o.powerPerLv ?? 0, buildDays: o.buildDays ?? (tier === 'new' && KINDS[kind].cat === 'Fab' ? 3 : 0), crew: o.crew ?? (KINDS[kind].cat === 'Suroviny' ? null : 1) }; // crew = kolik lidí obsadí jednu směnu (odhad); výrobní stroje v halách obsluhuje jeden člověk na směnu, vrt obsluhu nepočítá
 };
 const doc = (src, x = {}) => ({ fact: 'doc', src, ...x });
 const W100 = [100], W200 = [200], W300 = [300];
@@ -85,30 +85,30 @@ M('stencil_vxb', 'm_paste_printer', 'Ruční šablonový tiskař 3040 (VXB)', 'h
 M('dek_tq', 'm_paste_printer', 'ASMPT DEK TQ', 'new', 160000, 400, 2, 2, 1, { req: 'smt2' });
 M('pnp_lumen', 'm_pick_place', 'Opulo LumenPnP v4', 'hobby', 1995, 1000, 0.2, 1, 1, { req: 'smt1', ...doc('https://www.opulo.io/') });
 M('pnp_yy1', 'm_pick_place', 'NeoDen YY1', 'hobby', 2899, 4000, 0.3, 1, 1, { req: 'smt1' });
-M('pnp_tx2i', 'm_pick_place', 'ASMPT SIPLACE TX2i', 'new', 350000, 96000, 2, 1, 3, { req: 'smt2' });
+M('pnp_tx2i', 'm_pick_place', 'ASMPT SIPLACE TX2i', 'new', 350000, 96000, 2, 1, 3, { req: 'smt2', own: true, src: PRICES.pnp_tx2i?.src, note: 'Nový stroj stovky tisíc USD (použitý TX2i 20–70 tis. USD).' });
 M('reflow_t962a', 'm_reflow', 'Puhui T-962A (stolní IR pec)', 'hobby', 250, 20, 1.5, 1, 1, { req: 'smt1' });
 M('reflow_in6', 'm_reflow', 'NeoDen IN6 (6 zón)', 'hobby', 2500, 120, 2, 1, 1, { req: 'smt1' });
 M('reflow_1913', 'm_reflow', 'Heller 1913 MK7', 'new', 130000, 400, 14, 6, 2, { req: 'smt2' });
 M('aoi_scope', 'm_aoi', 'Ruční kontrola: stereomikroskop AmScope SM-4TZ', 'hobby', 520, 30, 0, 1, 1, { req: 'smt1' });
-M('aoi_zenith', 'm_aoi', 'Koh Young Zenith (3D AOI)', 'new', 160000, 400, 2, 2, 2, { req: 'smt2' });
+M('aoi_zenith', 'm_aoi', 'Koh Young Zenith (3D AOI)', 'new', 200000, 400, 2, 2, 2, { req: 'smt2', own: true, src: PRICES.aoi_zenith?.src, note: 'Nový in-line 3D AOI 150–250 tis. USD (použitý 35–120 tis. USD).' });
 M('fct_jig', 'm_fct', 'Testovací přípravek s pogo piny (vlastní)', 'hobby', 300, 60, 0, 1, 1, { req: 'smt1' });
-M('fct_takaya', 'm_fct', 'Takaya APT-1600FD (létající sondy)', 'new', 280000, 120, 2, 2, 2, { req: 'smt2' });
+M('fct_takaya', 'm_fct', 'Takaya APT-1600FD (létající sondy)', 'new', 250000, 120, 2, 2, 2, { req: 'smt2', own: true, note: 'Nový stroj s létajícími sondami 200–350 tis. USD (starší použitý 85–100 tis. USD).' });
 M('bench_esd', 'm_assembly', 'ESD montážní stůl s nářadím', 'hobby', 1200, 3, 0.1, 2, 1, { req: 'pc' });
 // DPS
-M('pcb_ldi_protolaser', 'm_pcb_ldi', 'LPKF ProtoLaser ST', 'hobby', 90000, 4, 1, 1, 1, { req: 'pcb1' });
+M('pcb_ldi_protolaser', 'm_pcb_ldi', 'LPKF ProtoLaser ST', 'hobby', 115000, 4, 1, 1, 1, { req: 'pcb1', own: true, note: 'Nový LPKF ProtoLaser 90–140 tis. USD (použitý 4–20 tis. USD).' });
 M('pcb_ldi_nuvogo', 'm_pcb_ldi', 'KLA Orbotech Nuvogo 780', 'new', 1200000, 120, 8, 4, 2, { req: 'pcb2' });
 M('pcb_etch_sprint', 'm_pcb_etch', 'Bungard Sprint 3000 (sprejové leptání)', 'hobby', 6000, 6, 2, 1, 1, { req: 'pcb1' });
 M('pcb_etch_line', 'm_pcb_etch', 'Průběžná linka DES (vyvolání–leptání–strip)', 'new', 600000, 150, 60, 14, 2, { req: 'pcb2' });
 M('pcb_press_multipress', 'm_pcb_press', 'LPKF MultiPress S4', 'hobby', 28000, 1, 3, 1, 1, { req: 'pcb1' });
 M('pcb_press_lamv', 'm_pcb_press', 'Bürkle LAMV 125', 'new', 1500000, 40, 80, 4, 3, { req: 'pcb2' });
-M('pcb_drill_ccd2', 'm_pcb_drill', 'Bungard CCD/2', 'hobby', 9000, 1.5, 0.5, 1, 1, { req: 'pcb1' });
-M('pcb_drill_speedmaster', 'm_pcb_drill', 'Schmoll Speedmaster', 'new', 350000, 50, 15, 3, 3, { req: 'pcb2' });
+M('pcb_drill_ccd2', 'm_pcb_drill', 'Bungard CCD/2', 'hobby', 9260, 1.5, 0.5, 1, 1, { req: 'pcb1', own: true, note: 'Cca 7 000 GBP bez DPH dle fóra; nová stolní PCB vrtačka vyšší třídy (např. LPKF ProtoMat) stojí 25–50 tis. USD.' });
+M('pcb_drill_speedmaster', 'm_pcb_drill', 'Schmoll Speedmaster', 'new', 350000, 50, 15, 3, 3, { req: 'pcb2', own: true, note: 'Průmyslová PCB vrtačka 100+ tis. USD (použitý stroj 15–50 tis. USD).' });
 M('pcb_plate_compacta', 'm_pcb_plating', 'Bungard Compacta 30', 'hobby', 12000, 2, 1.5, 2, 1, { req: 'pcb1' });
 M('pcb_plate_uniplate', 'm_pcb_plating', 'MKS Atotech Uniplate (horizontální)', 'new', 3500000, 100, 150, 30, 3, { req: 'pcb2' });
 // Pasivní součástky a mechanika – příklady modelů a rozměry z data/hw/parts_fab.js
-const P = (kind, usd, kw, name) => { const hw = HW[kind]; M(kind, kind, name ?? hw.example ?? hw.name, 'new', usd, KINDS[kind].ref, kw, Math.ceil(hw.size[0]), Math.ceil(hw.size[1]), { req: 'passives' }); };
-P('m_tape_caster', 1200000, 60); P('m_iso_laminator', 600000, 15); P('m_tunnel_kiln', 2000000, 250); P('m_belt_furnace', 350000, 60);
-P('m_termination_dipper', 300000, 5); P('m_chip_plating', 400000, 30); P('m_taping', 250000, 2); P('m_laser_trimmer', 450000, 5);
+const P = (kind, usd, kw, name, o = {}) => { const hw = HW[kind]; M(kind, kind, name ?? hw.example ?? hw.name, 'new', usd, KINDS[kind].ref, kw, Math.ceil(hw.size[0]), Math.ceil(hw.size[1]), { req: 'passives', ...o }); };
+P('m_tape_caster', 250000, 60, null, { own: true, note: 'Průmyslový tape caster 150–500 tis. USD.' }); P('m_iso_laminator', 600000, 15); P('m_tunnel_kiln', 1200000, 250, null, { own: true, note: 'Tunelová pec pro MLCC 800 tis.–3 mil. USD.' }); P('m_belt_furnace', 350000, 60, null, { own: true, note: 'Průmyslová pásová pec 200–600 tis. USD.' });
+P('m_termination_dipper', 300000, 5); P('m_chip_plating', 400000, 30); P('m_taping', 250000, 2); P('m_laser_trimmer', 80000, 5, null, { own: true, note: 'Průmyslový laser trimmer 40–120 tis. USD.' });
 P('m_foil_line', 8000000, 400, 'Linka leptání a formování Al fólie'); P('m_cap_winder', 60000, 2, 'Navíječka svitků (TMAXCN)');
 P('m_cap_assembly', 1500000, 30, 'Linka impregnace, zalisování a stárnutí'); P('m_powder_press', 900000, 30); P('m_coil_winder', 150000, 2, 'Navíječka cívek Nittoku');
 P('m_quartz_autoclave', 1500000, 80, 'Autokláv pro růst křemene'); P('m_stamping', 900000, 40); P('m_reel_plating', 2500000, 80, 'Kontinuální galvanizace pásu (Meco)');
@@ -162,8 +162,8 @@ const N2 = { ...N, req: ['fab300', 'pkg2'] }, N3 = { ...N, req: ['fab300', 'pkg3
 M('track_lithius', 'm_track', 'Tokyo Electron CLEAN TRACK LITHIUS Pro Z', 'new', 8000000, 275, 60, 6, 3, N2);
 M('litho_fpa5550', 'm_iline_stepper', 'Canon FPA-5550iZ2', 'new', 9000000, 150, 30, 3, 3, { ...N, res: 350 });
 M('litho_nxt2000', 'm_duv_immersion', 'ASML TWINSCAN NXT:2000i', 'new', 80000000, 275, 150, 7, 4, N3);
-M('litho_nxe3600', 'm_euv', 'ASML TWINSCAN NXE:3600D', 'new', 150000000, 160, 1000, 10, 4, { ...N, req: 'euv', note: 'cca 150 mil. USD (2021) – data/hw/machines.js' });
-M('litho_exe5000', 'm_euv', 'ASML TWINSCAN EXE:5000 (High-NA)', 'new', 380000000, 185, 1400, 14, 4, { ...N, req: 'highna', note: 'High-NA 300–400 mil. USD – data/hw/machines.js' });
+M('litho_nxe3600', 'm_euv', 'ASML TWINSCAN NXE:3600D', 'new', 150000000, 160, 1000, 10, 4, { ...N, req: 'euv', buildDays: 4, note: 'cca 150 mil. USD (2021) – data/hw/machines.js' });
+M('litho_exe5000', 'm_euv', 'ASML TWINSCAN EXE:5000 (High-NA)', 'new', 380000000, 185, 1400, 14, 4, { ...N, req: 'highna', buildDays: 4, note: 'High-NA 300–400 mil. USD – data/hw/machines.js' });
 M('implant_purion', 'm_implanter', 'Axcelis Purion H', 'new', 5000000, 300, 100, 8, 4, N);
 M('cvd_producer', 'm_cvd', 'Applied Materials Producer', 'new', 4500000, 100, 60, 5, 4, N3);
 M('ald_pulsar', 'm_ald', 'ASM Pulsar XP', 'new', 5000000, 50, 40, 5, 4, N);
@@ -185,18 +185,20 @@ M('polish_ac2000', 'm_wafer_polish', 'Lapmaster Wolters AC 2000-P3', 'new', 1800
 // maxLv = nejhlubší patro (po 50 m), kam vrt nebo důl dosáhne; sink = cena hloubení v USD za metr (odhad).
 M('quarry_hand', 'm_miner', 'Ruční lom: palice, klíny a kolečko', 'hobby', 400, 1, 0, 2, 2, { req: 'mine0', crew: 2, reach: 4, note: 'Odhad bez zdroje: nářadí pro dva dělníky. Výkon jedna tuna za hodinu je herní hodnota.' });
 M('glass_pot', 'm_glass_studio', 'Sklářská dílna: pánvová pec na 90 kg skla', 'hobby', 40000, 0.0113, 0, 3, 3, { req: 'glass0', crew: 2 });
-M('glass_tank', 'm_glass', 'Vanová pec na obalové sklo (80 t denně)', 'new', 12100000, 3.33, 0, 6, 10, { req: 'glass1', crew: 12 });
-M('miner_u17', 'm_miner', 'Minirypadlo Kubota U17-3', 'hobby', 27000, 5, 0, 2, 2, { req: 'mine1', crew: 1, reach: 6 });
-M('drill_small', 'm_drill', 'Malá vrtná souprava na přívěsu (do 100 m)', 'hobby', 45000, 1.5, 0, 2, 1, { req: 'survey', reach: 8, maxLv: 2, note: 'Odhad bez zdroje. Vrtání stojí dalších asi 150 USD za metr (odhad).' });
-M('shaft_small', 'm_shaft', 'Malý důl: šachta s vrátkem (do 100 m)', 'hobby', 180000, 8, 0, 3, 3, { req: 'shaft1', crew: 6, reach: 10, maxLv: 2, sink: 2000, note: 'Odhad bez zdroje: těžní věžička, vrátek, kompresor. Hloubení stojí dalších asi 2 000 USD za metr (odhad).' });
-M('drill_lf90', 'm_drill', 'Boart Longyear LF90D (jádrová vrtná souprava)', 'new', 400000, 2, 0, 2, 2, { req: 'shaft2', reach: 12, maxLv: 6, note: 'Odhad ceny soupravy; vrtání stojí dalších asi 150 USD za metr (odhad).' });
-M('shaft_st7', 'm_shaft', 'Úpadnice s nakladačem Epiroc Scooptram ST7', 'new', 2500000, 40, 0, 5, 5, { req: 'shaft2', crew: 12, reach: 20, maxLv: 6, sink: 6000, note: 'Odhad: nakladač, důlní vůz, větrání a zázemí malého dolu. Ražba stojí dalších asi 6 000 USD za metr hloubky (odhad).' });
-M('miner_cat320', 'm_miner', 'Caterpillar 320 + drtič Metso Nordberg C106', 'new', 650000, 150, 0, 4, 4, { req: 'mine2', crew: 3, reach: 14 });
-M('arc_furnace', 'm_arc_furnace', 'Oblouková pec 20 MVA (metalurgický křemík)', 'new', 30000000, 1.7, 20000, 12, 12, { req: 'silicon', crew: 8 });
-M('siemens_line', 'm_siemens', 'Siemensovy reaktory + syntéza a destilace TCS', 'new', 35000000, 0.06, 3500, 14, 10, { req: 'silicon', crew: 10 });
-// Elektrárny: rate = výkon v MW (MWh za hodinu práce). Ceny a počty lidí jsou odhady bez zdroje (malé uhelné bloky kolem 3 000–4 000 USD za kW).
-M('power_1', 'm_power', 'Uhelná teplárna 1 MW (roštový kotel + parní turbína)', 'used', 4000000, 1, 0, 6, 6, { req: 'power1', crew: 2, note: 'Odhad bez zdroje: malý roštový kotel s parní turbínou, asi 4 000 USD za kW.' });
-M('power_20', 'm_power', 'Uhelná elektrárna 20 MW (práškový kotel)', 'new', 60000000, 20, 0, 14, 12, { req: 'power2', crew: 8, note: 'Odhad bez zdroje: blok 20 MW, asi 3 000 USD za kW.' });
+M('glass_tank', 'm_glass', 'Vanová pec na obalové sklo (80 t denně)', 'new', 12100000, 3.33, 0, 6, 10, { req: 'glass1', crew: 12, buildDays: 2 });
+M('miner_u17_used', 'm_miner', 'Minirypadlo Kubota U17-3 (ojeté)', 'used', 17000, 5, 0, 2, 2, { req: 'mine1', crew: 1, reach: 6, fuel: 2, note: 'Ojetý stroj (13–22 tis. USD), levnější než nový, ale poruchovější.' });
+M('miner_u17', 'm_miner', 'Minirypadlo Kubota U17-3', 'hobby', 27000, 5, 0, 2, 2, { req: 'mine1', crew: 1, reach: 6, fuel: 2 });
+M('drill_small', 'm_drill', 'Malá vrtná souprava na přívěsu (do 100 m)', 'hobby', 30000, 1.5, 0, 2, 1, { req: 'survey', reach: 8, maxLv: 2, fuel: 4, note: 'Odhad dle reálných cen (USA 15–35 tis. $ + kompresor). Vrtání stojí dalších asi 150 USD za metr.' });
+M('shaft_small', 'm_shaft', 'Malý důl: šachta s vrátkem (do 100 m)', 'hobby', 180000, 12, 0, 3, 3, { req: 'shaft1', crew: 6, reach: 10, maxLv: 2, sink: 8000, sinkRate: 0.2, powerPerLv: 80, note: 'Odhad: těžní věžička, vrátek, kompresor. Hloubení šachty stojí reálně 5 000–15 000 USD za metr (bráno 8 000 USD/m, postup ~1,6 m/den na směnu).' });
+M('drill_lf90_used', 'm_drill', 'Boart Longyear LF90D (ojetá vrtná souprava)', 'used', 150000, 2, 0, 2, 2, { req: 'shaft2', reach: 12, maxLv: 6, fuel: 12, note: 'Ojetá jádrová vrtná souprava (130–170 tis. USD); vrtání 150 USD/m, častější údržba.' });
+M('drill_lf90', 'm_drill', 'Boart Longyear LF90D (jádrová vrtná souprava)', 'new', 400000, 2, 0, 2, 2, { req: 'shaft2', reach: 12, maxLv: 6, fuel: 12, note: 'Odhad ceny nové soupravy (ojetá 130–170 tis. USD); jádrové vrtání stojí 110–250 USD/m (bráno 150 USD/m).' });
+M('shaft_st7', 'm_shaft', 'Úpadnice s nakladačem Epiroc Scooptram ST7', 'new', 2500000, 40, 0, 5, 5, { req: 'shaft2', crew: 12, reach: 20, maxLv: 6, sink: 6000, sinkRate: 0.5, fuel: 18, powerPerLv: 150, note: 'Odhad: nakladač (6,8 t), důlní vůz, větrání a zázemí dolu. Ražba úpadnice stojí 3 000–7 000 USD/m (postup ~4 m/den na směnu).' });
+M('miner_cat320', 'm_miner', 'Caterpillar 320 + drtič Metso Nordberg C106', 'new', 650000, 150, 0, 4, 4, { req: 'mine2', crew: 3, reach: 14, fuel: 20 });
+M('arc_furnace', 'm_arc_furnace', 'Oblouková pec 20 MVA (metalurgický křemík)', 'new', 30000000, 1.7, 20000, 12, 12, { req: 'silicon', crew: 8, buildDays: 3 });
+M('siemens_line', 'm_siemens', 'Siemensovy reaktory + syntéza a destilace TCS', 'new', 35000000, 0.06, 5000, 14, 10, { req: 'silicon', crew: 10, buildDays: 3 });
+// Elektrárny: rate = výkon v MW (MWh za hodinu práce). Malé uhelné bloky jsou na kW dražší než velké 650 MW (EIA uvádí ~4 103 USD/kW pro 650 MW).
+M('power_1', 'm_power', 'Uhelná teplárna 1 MW (roštový kotel + parní turbína)', 'used', 6000000, 1, 0, 6, 6, { req: 'power1', crew: 2, buildDays: 3, note: 'Odhad: malý roštový kotel s parní turbínou, cca 6 000 USD za kW.' });
+M('power_20', 'm_power', 'Uhelná elektrárna 20 MW (práškový kotel)', 'new', 100000000, 20, 0, 14, 12, { req: 'power2', crew: 8, buildDays: 4, note: 'Odhad: blok 20 MW, cca 5 000 USD za kW (EIA 650 MW blok je 4 103 USD/kW).' });
 
 // Logistika a budovy (ceny = odhad stavebních nákladů)
 // Silnice: road = třída (1 až 3), speed = rychlost aut v dlaždicích za sekundu (herní hodnota, stejně jako rychlost dopravníku). Ceny za metr jsou odhady bez zdroje.
@@ -211,14 +213,17 @@ export const LOGI = {
   splitter: { id: 'splitter', name: 'Rozdělovač', req: ['belts', 'smt1'], usd: 800, w: 1, h: 1, what: 'Střídavě rozděluje položky do ostatních tří stran.' },
   sorter: { id: 'sorter', name: 'Třídič', req: ['belts', 'smt1'], usd: 1200, w: 1, h: 1, what: 'Vybranou položku pustí rovně, ostatní do stran.' },
   unloader: { id: 'unloader', name: 'Výdejník', req: ['belts', 'smt1'], usd: 2000, w: 1, h: 1, what: 'Stojí těsně u Skladu nebo depa a vydává ze skladu vybranou položku ve směru šipky, na dopravník nebo rovnou do stroje.' },
+  dump: { id: 'dump', name: 'Polní sklad (u dolu)', req: 'mine0', usd: 800, w: 2, h: 2, note: 'Zpevněná plocha s přístřeškem pro ukládání hlušiny a vytěžených surovin hned u dolu.',
+    what: 'Malý sklad (2×2 m) přímo vedle dolu nebo lomu. Jakmile se dolu dotýká, důl do něj okamžitě ukládá hlušinu i přebytečnou rudu bez blokování těžby a bez poplatku za překládku.' },
   depot: { id: 'depot', name: 'Logistické depo', req: 'depot', usd: Math.round((PRICES.warehouse_m2?.usd ?? 1200) * 16), w: 4, h: 4, note: PRICES.warehouse_m2?.note, src: PRICES.warehouse_m2?.src,
     what: 'Sklad 16 m² s rampou, napojený kamiony na Sklad. Auta z dolů do něj vozí suroviny, stroje, které se ho dotýkají, si z něj berou díly a odkládají do něj hotové výrobky. Každá převezená položka stojí 2 USD. Rozpracované dávky nebere.' },
   floor: { id: 'floor', name: 'Čistý prostor ISO 5', usd: PRICES.cleanroom_iso5_m2?.usd ?? 6000, fact: PRICES.cleanroom_iso5_m2?.fact, note: PRICES.cleanroom_iso5_m2?.note, src: PRICES.cleanroom_iso5_m2?.src, w: 1, h: 1, req: ['fab200', 'pkg2'], what: 'Podlaha čistého prostoru (třída 100) uvnitř haly; pokládá se tažením obdélníku. Stroje fabu 200 a 300 mm bez ní neběží. Cena za 1 m².' },
 };
 
 // Auta: jezdí sama po silnici od dolu nebo pece k cíli; kupují se sama za cenu vozu, když je na ně peněz dost. cap = nosnost v tunách.
-// l100 = spotřeba nafty v litrech na 100 km, wear = opotřebení a servis v USD na km (obojí odhad bez zdroje); km = provoz celkem v USD na km.
-const car = (id, name, usd, cap, req, note, l100, wear) => { const p = PRICES[id]; return { id, name, usd: Math.round(p?.usd ?? usd), cap, req, fact: p?.fact ?? 'estimate', src: p?.src ?? null, note: p?.note ?? note, l100, wear, km: Math.round(((l100 / 100) * DIESEL.usd + wear) * 100) / 100 }; };
+// l100 = spotřeba nafty v litrech na 100 km, wear = opotřebení a servis v USD na km, driver = mzda řidiče v USD na km (při průměrné rychlosti 30 km/h); km = provoz celkem v USD na km.
+const DRIVER_KM = Math.round(((WAGE / 8) / 30) * 100) / 100;
+const car = (id, name, usd, cap, req, note, l100, wear) => { const p = PRICES[id]; return { id, name, usd: Math.round(p?.usd ?? usd), cap, req, fact: p?.fact ?? 'estimate', src: p?.src ?? null, note: p?.note ?? note, l100, wear, driver: DRIVER_KM, km: Math.round(((l100 / 100) * DIESEL.usd + wear + DRIVER_KM) * 100) / 100 }; };
 export const CARS = {
   car_pickup: car('car_pickup', 'Starý ojetý pick-up (nosnost 1 t)', 3000, 1, 'road1', 'Odhad ceny hodně ojetého vozu.', 12, 0.12),
   car_truck: car('car_truck', 'Ojetý sklápěč (nosnost 5 t)', 28000, 5, 'car2', 'Odhad ceny ojetého lehkého nákladního sklápěče.', 25, 0.3),
@@ -259,36 +264,37 @@ raw('ore_au', 'Zlatonosná ruda (5 g/t)', 250, 150, '#f0c040', 0.5, 'polovina ho
 I('spoil', 'Hlušina (kamenivo)', 10, 't', { cat: 'Suroviny', depth: 2000, shape: 'ore', col: '#8d8a84', buy: false, note: 'Odhad ceny netříděného lomového kamene u lomu, bez zdroje.' });
 I('glass', 'Sklo (ploché a obalové)', 160, 't', { cat: 'Výrobky', depth: 300, shape: 'box', col: '#9fd3e6', buy: false });
 I('glassware', 'Foukané sklo (ruční výroba)', 1000, '100 kg', { cat: 'Výrobky', depth: 30, shape: 'box', col: '#bfe6f2', buy: false, note: 'Odhad bez zdroje: velkoobchodní cena ručně foukaného užitkového skla kolem 10 USD za kilogram.' });
-const si = (id, name, usd, pack, depth, shape, col) => I(id, name, usd, pack, { cat: 'Křemík', depth, shape, col });
+const si = (id, name, usd, pack, depth, shape, col, o = {}) => I(id, name, usd, pack, { cat: 'Křemík', depth, shape, col, ...o });
 // Spotřební materiál fabu (rezist, plyny, suspenze, terče) chodí do strojů potrubím z centrálního rozvodu, takže se bere rovnou ze Skladu.
 I('fabchem', 'Chemie a plyny pro fab (rezist, plyny, suspenze, terče)', 1000, 'zásoba za 1 000 $', { cat: 'Spotřební', depth: 1000, shape: 'box', col: '#7fb3d5', sell: false, note: 'Herní hodnota: jedno balení je spotřební materiál fabu za 1 000 USD; kolik ho který krok spotřebuje, je herní odhad.' });
-si('mgsi', 'Metalurgický křemík (98–99 %)', 2800, 't', 60, 'ore', '#6c7480'); si('polysi', 'Polykřemík 9N–11N', 3000, '100 kg', 80, 'ore', '#aeb9c9');
-si('ingot200', 'Monokrystal CZ 200 mm', 30000, 'ingot ~100 kg', 4, 'ingot', '#7f8a99'); si('ingot300', 'Monokrystal CZ 300 mm', 60000, 'ingot ~330 kg', 4, 'ingot', '#93a0b3');
-I('wafer100', 'Wafery 100 mm s oxidem a polykřemíkem', 225, '5 ks', { cat: 'Křemík', depth: 20, shape: 'foup', col: '#c9d2de', per: 0.2, why: 'balení 5 ks přepočtené z ceny 25 ks' });
+si('mgsi', 'Metalurgický křemík (98–99 %)', 2800, 't', 60, 'ore', '#6c7480');
+I('polysi', 'Polykřemík 11N (elektronický)', 8500, '100 kg', { cat: 'Křemík', depth: 80, shape: 'ore', col: '#aeb9c9', own: true, note: 'Polovodičový polykřemík 11N stojí reálně 70–100 USD/kg (solární 9N je ~4–6 USD/kg).' });
+si('ingot200', 'Monokrystal CZ 200 mm', 7000, 'ingot ~100 kg', 4, 'ingot', '#7f8a99', { own: true, note: '50–80 USD/kg polovodičový CZ ingot.' }); si('ingot300', 'Monokrystal CZ 300 mm', 26400, 'ingot ~330 kg', 4, 'ingot', '#93a0b3', { own: true, note: '~80 USD/kg vč. prémie za 300 mm.' });
+I('wafer100', 'Wafery 100 mm s oxidem a polykřemíkem', 120, '5 ks', { cat: 'Křemík', depth: 20, shape: 'foup', col: '#c9d2de', own: true, note: '20–40 USD/ks, balení 5 ks s oxidem 90–150 USD.' });
 si('wafer200', 'Wafery 200 mm (prime)', 1250, '25 ks', 60, 'foup', '#c9d2de'); si('wafer300', 'Wafery 300 mm (prime)', 2750, 'FOUP 25 ks', 80, 'foup', '#dfe6ee');
-const part = (id, name, usd, pack, depth, shape = 'reel', col = '#8fa3b8') => I(id, name, usd, pack, { cat: 'Součástky', depth, shape, col });
+const part = (id, name, usd, pack, depth, shape = 'reel', col = '#8fa3b8', o = {}) => I(id, name, usd, pack, { cat: 'Součástky', depth, shape, col, ...o });
 part('mlcc', 'MLCC 0402 100 nF', 20, 'kotouč 10 000 ks', 500); part('resistor', 'Rezistory 0402', 8, 'kotouč 10 000 ks', 500, 'reel', '#5f6b7a');
 part('elcap', 'Elektrolytické kondenzátory', 80, '1 000 ks', 200, 'reel', '#3d6fb5'); part('tantalum', 'Tantalové kondenzátory', 350, '1 000 ks', 100, 'reel', '#d9a23a');
 part('polymer_cap', 'Polymerové kondenzátory', 150, '1 000 ks', 200, 'reel', '#7c5fd0'); part('inductor', 'Výkonové tlumivky VRM', 300, '1 000 ks', 200, 'reel', '#55606e');
 part('crystal', 'Krystaly (křemenné rezonátory)', 150, '1 000 ks', 100, 'reel', '#c7ced6');
 part('conn_small', 'Drobné konektory (USB, lišty, jacky)', 50, '100 ks', 300, 'box', '#3b4350'); part('conn_slot', 'Sloty PCIe / DIMM / M.2', 80, '100 ks', 300, 'box', '#2c3138');
-part('conn_socket', 'Patice LGA1151', 600, '100 ks', 100, 'box', '#b9b2a0'); part('conn_video', 'Konektory HDMI / DP / VGA', 60, '100 ks', 200, 'box', '#59616d');
+part('conn_socket', 'Patice LGA1151', 220, '100 ks', 100, 'box', '#b9b2a0', { own: true, note: 'Reálně 2,00–2,40 USD/ks při 50–179 ks.' }); part('conn_video', 'Konektory HDMI / DP / VGA', 60, '100 ks', 200, 'box', '#59616d');
 part('conn_power', 'Napájecí konektory ATX / PCIe', 40, '100 ks', 200, 'box', '#e8e3d2');
 part('fan120', 'Ventilátor 120 mm', 350, '100 ks', 100, 'box', '#2a2e35'); part('cooler_cpu', 'Chladič CPU (hliník + ventilátor)', 600, '100 ks', 80, 'box', '#aab2bc');
-part('cooler_small', 'Malý chladič (GPU / čipset)', 250, '100 ks', 100, 'box', '#aab2bc'); part('cooler_gpu', 'Chladič grafické karty', 2000, '100 ks', 60, 'box', '#767d87');
+part('cooler_small', 'Malý chladič (GPU / čipset)', 180, '100 ks', 100, 'box', '#aab2bc', { own: true, note: 'Základní Al chladič s ventilátorem: 0,80–2,50 USD/ks.' }); part('cooler_gpu', 'Chladič grafické karty', 2500, '100 ks', 60, 'box', '#767d87', { own: true, note: 'OEM custom GPU chladič s 2–3 ventilátory: 15–50 USD/ks.' });
 part('thermal_pad', 'Teplovodivé podložky', 100, '100 sad', 100, 'box', '#6fa8dc');
-const pcb = (id, name, usd, depth = 100) => I(id, name, usd, '100 ks', { cat: 'DPS', depth, shape: 'pcb', col: '#1f7a4d' });
-pcb('pcb_uno', 'DPS Arduino Uno (2 vrstvy)', 60); pcb('pcb_edge3d', 'DPS Edge 3D (4 vrstvy, PCI)', 500); pcb('pcb_dimm', 'DPS modulu DIMM (6 vrstev)', 250);
-pcb('pcb_k620', 'DPS Quadro K620 (6 vrstev)', 600); pcb('pcb_gpu', 'DPS grafické karty (10 vrstev)', 2500); pcb('pcb_atx', 'DPS základní desky ATX (4 vrstvy)', 1800);
-pcb('pcb_ssd', 'DPS M.2 2280 (6 vrstev)', 150);
+const pcb = (id, name, usd, depth = 100, o = {}) => I(id, name, usd, '100 ks', { cat: 'DPS', depth, shape: 'pcb', col: '#1f7a4d', ...o });
+pcb('pcb_uno', 'DPS Arduino Uno (2 vrstvy)', 30, 100, { own: true, note: '2vrstvá PCB ~69×53 mm (100 ks): 7–30 USD vč. dopravy.' }); pcb('pcb_edge3d', 'DPS Edge 3D (4 vrstvy, PCI)', 500); pcb('pcb_dimm', 'DPS modulu DIMM (6 vrstev)', 250);
+pcb('pcb_k620', 'DPS Quadro K620 (6 vrstev)', 800, 100, { own: true, note: '6–8vrstvá PCB pro grafickou kartu: ~8–20 USD/ks.' }); pcb('pcb_gpu', 'DPS grafické karty (10 vrstev)', 1400, 100, { own: true, note: '6–8vrstvá PCB pro grafickou kartu (~200–270 mm): ~8–20 USD/ks.' }); pcb('pcb_atx', 'DPS základní desky ATX (4 vrstvy)', 1400, 100, { own: true, note: '6–8vrstvá ATX deska při 1 000+ ks: 8–28 USD/ks.' });
+pcb('pcb_ssd', 'DPS M.2 2280 (6 vrstev)', 90, 100, { own: true, note: '6–8vrstvá malá PCB M.2 / SSD (100 ks): 35–130 USD (+ ENIG).' });
 const ic = (id, name, usd, depth = 100) => I(id, name, usd, '100 ks', { cat: 'Čipy', depth, shape: 'tray', col: '#2b2e33' });
 ic('atmega328p', 'Microchip ATmega328P-AU', 250); ic('atmega16u2', 'Microchip ATmega16U2-MU', 330); ic('misc_ic', 'Drobné IO (stabilizátory, OZ, EEPROM)', 40, 500);
 ic('eprom_27c256', 'EPROM 27C256', 300); ic('dram_256k16', 'FPM DRAM 256K×16 (SOJ-40)', 400); ic('ad1845', 'Analog Devices AD1845 (kodek)', 1200);
 ic('ddr3_4gb', 'DDR3 4 Gb', 200); ic('lpddr4_ssd', 'LPDDR4 512 MB (SSD)', 300); ic('ssd_ctrl', 'Řadič NVMe SSD', 600);
-const pc = (id, name, usd) => I(id, name, usd, '100 ks', { cat: 'Díly PC', depth: 100, shape: 'box', col: '#4a5261', sell: false });
+const pc = (id, name, usd, o = {}) => I(id, name, usd, '100 ks', { cat: 'Díly PC', depth: 100, shape: 'box', col: '#4a5261', sell: false, ...o });
 pc('psu600', 'Zdroj ATX 600 W 80+ Bronze', 5000); pc('psu650', 'Zdroj Seasonic Core GX-650', 9000); pc('case_atx', 'Skříň ATX midi-tower', 6000);
 pc('dell_t5810', 'Dell Precision T5810 (barebone, použitý)', 15000); pc('p100_kit', 'Sada pro Tesla P100 (kryty, ventilátory 9733, redukce EPS, Add2PSU)', 9000);
-pc('ssd_870', 'Samsung 870 EVO 1 TB (SATA)', 9500);
+pc('ssd_870', 'Samsung 870 EVO 1 TB (SATA)', 26000, { own: true, note: 'Konec 2026: 240–315 USD/ks (nový retail kvůli růstu cen NAND).' });
 
 // ---------------------------------------------------------------- čipy, které jde vyrobit
 // sub = plocha pouzdra v mm² (podle ní se počítá cena substrátu ABF; 1400 mm² = desktopové CPU)

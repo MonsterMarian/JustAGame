@@ -22,8 +22,8 @@ function h(tag, attrs, ...kids) {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hours = (x) => (x < 1 ? `${Math.max(1, Math.round(x * 60))} min` : x < 48 ? `${num(x, 1)} h` : `${num(x / 24, 1)} dne`);
 const TIER = { hobby: 'dílna', used: 'repasovaný', new: 'nový' };
-const GLYPH = { road1: '┅', road2: '═', road3: '▬', hall: '⌂', belt: '➔', junction: '✛', splitter: '⑂', sorter: '◇', unloader: '⇥', depot: '▣', floor: '▦' };
-const ROAD_ORDER = ['road1', 'road2', 'road3'], LOGI_ORDER = ['hall', 'belt', 'junction', 'splitter', 'sorter', 'unloader', 'depot', 'floor'];
+const GLYPH = { road1: '┅', road2: '═', road3: '▬', hall: '⌂', belt: '➔', junction: '✛', splitter: '⑂', sorter: '◇', unloader: '⇥', dump: '▤', depot: '▣', floor: '▦' };
+const ROAD_ORDER = ['road1', 'road2', 'road3'], LOGI_ORDER = ['hall', 'belt', 'junction', 'splitter', 'sorter', 'unloader', 'dump', 'depot', 'floor'];
 const RECT = { hall: 'Hala', floor: 'Čistý prostor' }; // tyhle stavby se pokládají tažením obdélníku
 const ROUTE_CATS = { smt: 'Osazování desek', build: 'Sestavy PC', pcb: 'Výroba DPS', fab: 'Čipy: výroba na waferu', pkg: 'Čipy: pouzdření a test', passive: 'Pasivní součástky a mechanika', bulk: 'Křemík', wafer: 'Ingoty a wafery' };
 // štítek původu ceny: doloženo zdrojem / odhad
@@ -62,12 +62,13 @@ function pick(id) {
 }
 // Pruh nad stavebním menu, barevný rámeček okna, kurzor a štítek u kurzoru říkají, jestli se zrovna staví, bourá, nebo jen prohlíží.
 function modeUI() {
-  const t = G.tool, f = t && t !== 'demolish' ? sim.defOf(t) : null;
-  document.body.dataset.mode = !t ? '' : f ? 'build' : 'demolish';
-  $('mode').replaceChildren(h('b', null, !t ? 'Prohlížíš' : f ? 'Stavíš' : 'Bouráš'), h('span', null, !t ? 'Klik na budovu ji vybere. Levé tlačítko táhne mapu, pravé otáčí pohled, kolečko přibližuje.'
+  const t = G.tool, up = t === 'upgrade', f = t && t !== 'demolish' && !up ? sim.defOf(t) : null;
+  document.body.dataset.mode = !t ? '' : up ? 'upgrade' : f ? 'build' : 'demolish';
+  $('mode').replaceChildren(h('b', null, !t ? 'Prohlížíš' : up ? 'Vylepšuješ' : f ? 'Stavíš' : 'Bouráš'), h('span', null, !t ? 'Klik na budovu ji vybere. Levé tlačítko táhne mapu, pravé otáčí pohled, kolečko přibližuje.'
+    : up ? 'Klik na budovu nebo sklad jej vylepší na další úroveň (klávesa U). Pravé tlačítko nebo Esc: konec.'
     : f ? `${f.name} · ${fmt(f.usd)}. ${RECT[t] ? 'Táhni obdélník.' : f.road ? 'Klikni na začátek a pak na konec, třeba na lom a na Sklad. Cesta mezi nimi se postaví sama.' : t === 'belt' ? 'Klikni nebo táhni.' : 'Klikni na místo.'}${f.road || RECT[t] ? '' : ' R otáčí.'} Esc nebo pravé tlačítko: konec stavění.`
       : 'Klik na stavbu nebo silnici ji zbourá a vrátí cenu. Esc nebo pravé tlačítko: konec bourání.'));
-  $('ctag').textContent = f ? (f.road ? `${f.name}: klikni na začátek` : `Stavíš: ${f.name}`) : 'Bouráš';
+  $('ctag').textContent = up ? 'Vylepšit budovu' : f ? (f.road ? `${f.name}: klikni na začátek` : `Stavíš: ${f.name}`) : 'Bouráš';
   if (!t) $('ctag').hidden = true;
   G.hot = null; $('view').classList.remove('hot');
 }
@@ -93,9 +94,10 @@ function tip(anchor, content) {
   t.style.left = clamp(r.left, 8, innerWidth - t.offsetWidth - 8) + 'px'; t.style.top = Math.max(8, r.top - t.offsetHeight - 8) + 'px';
 }
 export function renderBuild() {
-  const s = G.s, idsOf = (c) => (c === 'Doprava' ? ROAD_ORDER : c === 'Logistika' ? LOGI_ORDER : Object.values(MODELS).filter((m) => KINDS[m.kind].cat === c).sort((a, b) => a.usd - b.usd).map((m) => m.id));
+  const s = G.s, idsOf = (c) => (c === 'Doprava' ? ROAD_ORDER : c === 'Logistika' ? LOGI_ORDER
+    : (c === 'Suroviny' ? ['dump'] : []).concat(Object.values(MODELS).filter((m) => KINDS[m.kind].cat === c).sort((a, b) => a.usd - b.usd).map((m) => m.id)));
   const opened = (c) => idsOf(c).filter((id) => sim.unlocked(s, sim.defOf(id).req));
-  const cats = CATS.filter((c) => opened(c).length); // záložky, ve kterých zatím nic není, se neukazují
+  const cats = CATS; // všechny kategorie jsou vidět hned od začátku
   if (!cats.includes(cat)) cat = cats[0];
   $('cats').replaceChildren(...cats.map((c) => h('button', { class: c === cat ? 'on' : '', 'data-c': c, style: `--c:${CAT_COL[c]}`, onclick: () => { cat = c; renderBuild(); } }, c)));
   const ids = idsOf(cat), open = opened(cat);
@@ -105,6 +107,7 @@ export function renderBuild() {
     const f = sim.defOf(id), node = RESEARCH.find((r) => r.id === [f.req].flat()[0]);
     btns.push(h('button', { class: 'tool lock', title: `Odemkni ve Stromu rozvoje: ${node?.name} (★ ${node?.pts})`, onclick: () => { tsel = node?.id; openModal('research', true); } }, h('span', { class: 'glyph' }, '🔒'), h('b', null, f.name), h('i', null, `★ ${node?.pts}`)));
   }
+  btns.push(h('button', { class: 'tool' + (G.tool === 'upgrade' ? ' on' : ''), 'data-id': 'upgrade', title: 'Vylepšit postavené budovy (klávesa U)', onclick: () => pick('upgrade') }, h('span', { class: 'glyph' }, '⬆️'), h('b', null, 'Vylepšit'), h('i', null, 'úroveň / modul')));
   if (cat === 'Logistika' || cat === 'Doprava') btns.push(h('button', { class: 'tool' + (G.tool === 'demolish' ? ' on' : ''), 'data-id': 'demolish', onclick: () => pick('demolish') }, h('span', { class: 'glyph' }, '✕'), h('b', null, 'Bourat'), h('i', null, 'vrací plnou cenu')));
   $('tools').replaceChildren(...btns);
 }
@@ -113,12 +116,60 @@ export function renderBuild() {
 const tileOf = (e) => pick3d(e.clientX, e.clientY) ?? G.hover ?? { x: 0, y: 0, fx: 0, fy: 0 };
 function use(t, loud, hit) { // hit = stroj, na jehož těleso se kliklo; v šikmém pohledu leží dlaždice pod kurzorem až za ním
   const s = G.s;
-  if (G.tool === 'demolish') {
+  if (G.tool === 'upgrade') {
     const b = hit || sim.at(s, t.x, t.y);
-    if (b ? sim.remove(s, b) : sim.removeGround(s, t.x, t.y)) { sfx('remove'); if (G.sel === b) select(null); }
+    if (!b) return;
+    const cost = sim.upgradeCost(b);
+    if (cost && sim.upgrade(s, b)) {
+      sfx('done');
+      if (loud) toast(`Vylepšeno na úroveň ${b.lv + 1}`, 'ok');
+      select(b);
+    } else if (cost) {
+      if (loud) { sfx('error'); toast(`Na vylepšení chybí peníze (${fmt(cost)})`, 'err'); }
+    } else {
+      select(b);
+      if (loud) toast('Budova už je na nejvyšší úrovni — vpravo lze přidat moduly nebo ji povýšit');
+    }
     return;
   }
-  const [w, hh] = sim.sizeOf(G.tool, G.rot), r = sim.place(s, G.tool, t.x - ((w - 1) >> 1), t.y - ((hh - 1) >> 1), G.rot);
+  if (G.tool === 'demolish') {
+    const b = hit || sim.at(s, t.x, t.y);
+    if (b ? sim.remove(s, b) : (sim.removeGround(s, t.x, t.y) || sim.reclaim(s, t.x, t.y))) { sfx('remove'); if (G.sel === b) select(null); }
+    return;
+  }
+  const [w, hh] = sim.sizeOf(G.tool, G.rot);
+  const px = t.x - ((w - 1) >> 1), py = t.y - ((hh - 1) >> 1);
+  let r = sim.place(s, G.tool, px, py, G.rot);
+  const f = MODELS[G.tool];
+  if (r.err && f && (r.err.includes('v hale') || r.err.includes('čistém prostoru'))) {
+    const needFloor = !!f.clean;
+    if (sim.unlocked(s, sim.defOf('hall').req) && (!needFloor || sim.unlocked(s, sim.defOf('floor').req))) {
+      const tilesFor = (pad) => {
+        const out = [];
+        for (let y = py - pad; y < py + hh + pad; y++) for (let x = px - pad; x < px + w + pad; x++) out.push([x, y]);
+        return out;
+      };
+      const checkBox = (tiles) => {
+        let hallN = 0, floorN = 0;
+        for (const [x, y] of tiles) {
+          if (sim.at(s, x, y)) return null;
+          if (!sim.isHall(s, x, y)) { if (sim.canPlace(s, 'hall', x, y)) return null; hallN++; }
+          if (needFloor && !sim.isFloor(s, x, y)) floorN++;
+        }
+        const cost = f.usd + hallN * sim.defOf('hall').usd + floorN * sim.defOf('floor').usd;
+        return s.sandbox || s.money >= cost ? { tiles, hallN, floorN } : null;
+      };
+      const box = checkBox(tilesFor(1)) || checkBox(tilesFor(0));
+      if (box) {
+        for (const [x, y] of box.tiles) {
+          if (!sim.isHall(s, x, y)) sim.place(s, 'hall', x, y);
+          if (needFloor && !sim.isFloor(s, x, y)) sim.place(s, 'floor', x, y);
+        }
+        r = sim.place(s, G.tool, px, py, G.rot);
+        if (!r.err && (box.hallN || box.floorN)) toast(`Automaticky postavena ${needFloor ? 'hala a čistý prostor' : 'hala'} pod strojem (${box.hallN} m²)`, 'ok');
+      }
+    }
+  }
   if (!r.err) sfx('place');
   else if (loud || (r.err === 'Nedostatek peněz' && performance.now() - lastErr > 3000)) { toast(r.err, 'err'); sfx('error'); lastErr = performance.now(); } // při tažení se ozve jen došlá hotovost
 }
@@ -130,6 +181,7 @@ function rectPlace({ a, b }) {
   if (n) { sfx('place'); toast(`${RECT[id]}: ${n} m² za ${fmt(n * sim.defOf(id).usd)}`, 'ok'); } else { toast(sim.canPlace(s, id, a.x, a.y) ?? 'Tady to postavit nejde', 'err'); sfx('error'); }
 }
 function stroke(a, b) { // tažení myší: dopravník se sám otáčí po směru tahu
+  if (G.tool === 'upgrade') return;
   let { x, y } = a;
   while (x !== b.x || y !== b.y) {
     const px = x, py = y;
@@ -158,27 +210,45 @@ function barsOf(s, b) {
   const bo = sim.boost(b), run = b.st === 'run';
   if (b.k === 'miner') {
     if (m.kind === 'm_drill') return out;
-    const [cx, cy] = sim.centerOf(b), left = b.oi ? sim.survey(s, cx, cy, m.reach, m.kind === 'm_shaft' ? b.goal : 0)[b.oi] ?? 0 : 0;
-    row(`Těžba ${run ? num(m.rate * bo * 24, 1) : 0} t za den` + (b.oi ? ` · ${ORES[b.oi].name}` : '') + ` (${num(m.rate * (1 + 0.5 * (b.lv ?? 0)), 2)} t za hodinu práce)`, run ? 1 : 0, 'var(--ok)');
-    row(`Hromada ${b.out.length} z ${sim.PILE} t`, b.out.length / sim.PILE);
-    row(`Ložisko v dosahu: zbývá ${num(left)} t`, left > 0 ? 1 : 0, '#8a6a45');
+    const [cx, cy] = sim.centerOf(b), left = b.oi ? sim.survey(s, cx, cy, sim.reachOf(b), m.kind === 'm_shaft' ? b.goal : 0)[b.oi] ?? 0 : 0, spd = ORES[b.oi]?.speed ?? 1, pile = sim.pileOf(b);
+    row(`Těžba ${run ? num(m.rate * spd * bo * 24, 1) : 0} t za den` + (b.oi ? ` · ${ORES[b.oi].name}` : '') + ` (${num(m.rate * spd * (1 + 0.5 * (b.lv ?? 0)) * (sim.hasMod(b, 'auto') ? 1.25 : 1), 2)} t/h)`, run ? 1 : 0, 'var(--ok)');
+    row(`Hromada ${b.out.length} z ${pile} t`, b.out.length / pile);
+    row(`Ložisko v dosahu (${sim.reachOf(b)} m): zbývá ${num(left)} t`, left > 0 ? 1 : 0, '#8a6a45');
   } else if (KINDS[m.kind].cat === 'Suroviny' && ROUTES[b.prod]?.power) { // elektrárna: uhlí, výkon a zásobník proudu
     const cap = sim.capOf(b);
     for (const it in cap) row(`${short(it)} ${Math.floor(b.buf[it] ?? 0)} z ${cap[it]} t`, (b.buf[it] ?? 0) / cap[it], '#6f9be0');
     row(`Výkon ${run ? num(m.rate * bo, 2) : 0} MW průměrně (${num(m.rate, 0)} MW při práci) · spálí ${num(m.rate * bo * 24 * ROUTES.power.ops[0].in.coal, 1)} t uhlí za den`, run ? 1 : 0, 'var(--ok)');
     row(`Zásobník proudu ${num(s.mwh, 1)} z ${sim.GRID_MWH} MWh · přebytek se prodává do sítě`, s.mwh / sim.GRID_MWH);
   } else if (KINDS[m.kind].cat === 'Suroviny' && ROUTES[b.prod]?.out) {
-    const cap = sim.capOf(b);
+    const cap = sim.capOf(b), pile = sim.pileOf(b);
     for (const it in cap) row(`${short(it)} ${Math.floor(b.buf[it] ?? 0)} z ${cap[it]} t`, (b.buf[it] ?? 0) / cap[it], '#6f9be0');
-    row(`Hotovo: ${Object.keys(ROUTES[b.prod].out).map(short).join(', ')} ${b.out.length} z ${sim.PILE}`, b.out.length / sim.PILE);
+    row(`Hotovo: ${Object.keys(ROUTES[b.prod].out).map(short).join(', ')} ${b.out.length} z ${pile}`, b.out.length / pile);
     row(b.job ? `Tavba ${Math.round((b.job.t / b.job.T) * 100)} %` : 'Netaví', b.job ? b.job.t / b.job.T : 0, 'var(--ok)');
     const r = ROUTES[b.prod], perDay = (24 * bo * (m.rate / KINDS[m.kind].ref)) / r.ops[0].h; // dávek za den
     row(`Za den: ${Object.entries(r.ops[0].in ?? {}).map(([it, q]) => `${num(q * perDay, 2)} t ${short(it)}`).join(' + ')} → ${Object.entries(r.out).map(([it, q]) => `${num(q * perDay, 2)}× ${short(it)}`).join(', ')}`, 0);
+  } else if (KINDS[m.kind].cat !== 'Suroviny') {
+    if (b.build > 0 && m.buildDays) {
+      const pct = Math.max(0, Math.min(100, (1 - b.build / (m.buildDays * 24)) * 100));
+      row(`Stavba ${Math.round(pct)} % · zbývá ${hours(b.build)}`, pct / 100, '#6f9be0');
+    } else if (b.fix > 0) {
+      const fixH = sim.hasMod(b, 'cool') ? sim.FIX_H / 2 : sim.FIX_H;
+      row(`Oprava poruchy · zbývá ${hours(b.fix)}`, Math.max(0, 1 - b.fix / fixH), 'var(--err)');
+    } else {
+      const cur = b.q?.length ? b.q[0] : null, w = cur && ITEMS[cur], op = w?.wip ? ROUTES[w.route]?.ops[w.step] : null;
+      const pct = b.job ? Math.round((b.job.t / b.job.T) * 100) : 0;
+      const eff = m.rate * (1 + 0.5 * (b.lv ?? 0)) * (sim.hasMod(b, 'auto') ? 1.25 : 1);
+      row(b.job ? `Zpracovává${op ? `: ${op.name}` : ''} (${pct} %)` : b.prod ? `Linka: ${ROUTES[b.prod]?.name ?? b.prod}` : 'Připraven ke zpracování', b.job ? b.job.t / b.job.T : 0, 'var(--ok)');
+      row(`Vytížení ${Math.round((b.busy ?? 0) * 100)} % · výkon ${num(eff, eff < 10 ? 2 : 0)} ${UNIT[KINDS[m.kind].u]} · úroveň ${(b.lv ?? 0) + 1}`, b.busy ?? 0, '#6f9be0');
+    }
   } else return out;
   if (m.crew) row(`Lidé ${sim.staffed(b)} z ${3 * m.crew} · pracuje ${num(sim.hoursOf(b), 0)} h denně`, sim.staffed(b) / (3 * m.crew), '#b08d57');
   return out;
 }
-const tipBody = (b) => [h('b', null, b.model ? MODELS[b.model].name : b.k === 'npc' ? b.name : b.k === 'hub' ? (b.hq ? 'Sklad' : 'Logistické depo') : sim.defOf(b.k).name),
+const badgeUp = (b) => {
+  const s = ((b.lv ?? 0) > 0 ? ` ★${b.lv + 1}` : '') + ((b.mods ?? []).length ? ' ' + b.mods.map((id) => sim.MODS[id]?.icon ?? '').join('') : '');
+  return s;
+};
+const tipBody = (b) => [h('b', null, (b.model ? MODELS[b.model].name : b.k === 'npc' ? b.name : b.k === 'hub' ? (b.hq ? 'Sklad' : b.dump ? 'Polní sklad (u dolu)' : 'Logistické depo') : sim.defOf(b.k).name) + badgeUp(b)),
   h('div', { class: 'dim' }, (b.model && sim.statusOf(G.s, b)) || (b.k === 'npc' ? `vykupuje: ${BUYERS[b.t].buys.map((it) => ITEMS[it].name).join(', ')}` : 'kliknutím otevřeš podrobnosti')), ...barsOf(G.s, b)];
 let lastHover = 0, lastPrev = null;
 function hoverTip(e) { // bublina se jménem a stavem stroje pod kurzorem
@@ -201,7 +271,7 @@ function bindInput() {
     if (rot) return;
     if (RECT[G.tool]) G.rect = { a: t, b: t };
     else if (sim.defOf(G.tool)?.road) { if (G.plan) finishRoad(); else { G.plan = { a: t }; planTo(t); } } // silnice: první klik je začátek, druhý konec
-    else if (G.tool) use(t, true, G.tool === 'demolish' && pickThing(e.clientX, e.clientY)?.b);
+    else if (G.tool) use(t, true, (G.tool === 'demolish' || G.tool === 'upgrade') && pickThing(e.clientX, e.clientY)?.b);
   });
   view.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // prostřední tlačítko by jinak zapnulo automatické rolování
   view.addEventListener('pointermove', (e) => {
@@ -209,10 +279,17 @@ function bindInput() {
     G.mouse = { x: e.clientX, y: e.clientY };
     if (G.plan && (t.x !== G.plan.b?.x || t.y !== G.plan.b?.y)) planTo(t);
     const mm = MODELS[G.tool];
-    if (mm?.kind === 'm_miner' && (t.x !== lastPrev?.x || t.y !== lastPrev?.y)) {
+    if (G.tool === 'upgrade') {
+      const hb = pickThing(e.clientX, e.clientY)?.b ?? sim.at(G.s, t.x, t.y);
+      const uc = hb && sim.upgradeCost(hb), ev = hb && sim.evolutions(G.s, hb)[0];
+      $('ctag').textContent = !hb ? 'Vylepšit: klikni na budovu'
+        : uc ? `Vylepšit (úroveň ${(hb.lv ?? 0) + 2}): ${fmt(uc)}`
+        : ev ? `Povýšit na ${ev.name.split(':')[0]}`
+        : 'Nejvyšší úroveň (klikni pro moduly)';
+    } else if (mm?.kind === 'm_miner' && (t.x !== lastPrev?.x || t.y !== lastPrev?.y)) {
       lastPrev = t;
       const sv = sim.survey(G.s, t.x - ((mm.w - 1) >> 1) + (mm.w >> 1), t.y - ((mm.h - 1) >> 1) + (mm.h >> 1), mm.reach, 0), o = Object.keys(sv).sort((x, y) => sv[y] - sv[x])[0];
-      $('ctag').textContent = o ? `${mm.name.split(':')[0]}: ${ORES[o].name}, ${num(mm.rate, 1)} t/h, v dosahu ${num(sv[o])} t` : `${mm.name.split(':')[0]}: tady není co těžit`;
+      $('ctag').textContent = o ? `${mm.name.split(':')[0]}: ${ORES[o].name}, ${num(mm.rate * (ORES[o].speed ?? 1), 1)} t/h, v dosahu ${num(sv[o])} t` : `${mm.name.split(':')[0]}: tady není co těžit`;
     }
     if (G.tool) { const c = $('ctag'); c.hidden = false; c.style.left = e.clientX + 16 + 'px'; c.style.top = e.clientY + 22 + 'px'; }
     if (!drag) { hoverTip(e); return; }
@@ -255,12 +332,13 @@ function bindInput() {
     if (k === 'escape') { if (modal) closeModal(); else if (G.plan) { G.plan = null; modeUI(); } else if (G.tool) pick(G.tool); else if (G.sel) select(null); else openModal('menu'); }
     else if (k === 'r') G.rot = (G.rot + (e.shiftKey ? 3 : 1)) & 3;
     else if (k === 'x' || k === 'delete') pick('demolish');
+    else if (k === 'u') pick('upgrade');
     else if (k === 'g') toggleUnder();
-    else if (k === 'f' && G.hover) { const b = sim.at(G.s, G.hover.x, G.hover.y); if (b && !b.hq && b.k !== 'npc') { G.rot = b.d ?? G.rot; const id = b.model ?? (b.k === 'hub' ? 'depot' : b.k); if (G.tool !== id) pick(id); } }
+    else if (k === 'f' && G.hover) { const b = sim.at(G.s, G.hover.x, G.hover.y); if (b && !b.hq && b.k !== 'npc') { G.rot = b.d ?? G.rot; const id = b.model ?? (b.k === 'hub' ? (b.dump ? 'dump' : 'depot') : b.k); if (G.tool !== id) pick(id); } }
     else if (k === ' ') { e.preventDefault(); setSpeed(G.speed ? 0 : G.lastSpeed); }
     else if ('1234'.includes(k)) setSpeed([1, 3, 10, 30][+k - 1]);
     else if (k === 'h') home();
-    else if (k === 'm') openModal('market'); else if (k === 'c') openModal('chips'); else if (k === 'v') openModal('research'); else if (k === 'p') openModal('routes'); else if (k === 'i') openModal('stats');
+    else if (k === 'm') openModal('market'); else if (k === 'c') openModal('chips'); else if (k === 'v') openModal('research'); else if (k === 'p') openModal('routes'); else if (k === 't') openModal('factories'); else if (k === 'i') openModal('stats');
   });
   addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   addEventListener('blur', () => keys.clear());
@@ -286,13 +364,54 @@ const itemOptions = (cur, extra = []) => {
   return [h('option', { value: '' }, '— nic —'), ...extra.map(([v, t]) => h('option', { value: v, selected: v === cur }, t)),
     ...Object.entries(groups).map(([c, list]) => h('optgroup', { label: c }, list.map((it) => h('option', { value: it.id, selected: it.id === cur }, it.name))))];
 };
+const starsText = (lv = 0) => '★'.repeat((lv ?? 0) + 1) + '☆'.repeat(sim.UPG.length - (lv ?? 0));
+function bonusSummary(s, b) {
+  if (b.k === 'hub') {
+    if (b.hq) return `Rezerva surovin pro pece: ${sim.reserveOf(s)} t${sim.hasMod(b, 'cap') ? ' (2× rampa)' : ''}`;
+    if (b.dump) return 'Přebírá hlušinu i přebytečné suroviny zdarma.';
+    return `Poplatek depa za přesun: ${num(sim.depotFeeOf(b), 1)} $/t`;
+  }
+  const m = MODELS[b.model], perf = Math.round(100 * (1 + 0.5 * (b.lv ?? 0)) * (sim.hasMod(b, 'auto') ? 1.25 : 1));
+  const parts = [`Výkon ${perf} %`];
+  if (m.reach) parts.push(`dosah ${sim.reachOf(b)} m`);
+  parts.push(`hromada ${sim.pileOf(b)} t`, `max ${sim.maxCarsOf(b)} aut`);
+  if (sim.hasMod(b, 'cool')) parts.push('−25 % energie/nafta, 3× spolehlivější');
+  return parts.join(' · ');
+}
+function upgradeSection(s, b, onRefresh) {
+  const up = sim.upgradeCost(b), canUp = !!up && (s.sandbox || s.money >= up);
+  const modIds = b.model ? Object.keys(sim.MODS) : b.hq ? ['cap'] : [];
+  const evos = sim.evolutions(s, b);
+  return [
+    h('div', { class: 'kv' }, h('span', null, b.k === 'hub' ? 'Úroveň logistiky' : 'Úroveň'), h('b', { class: 'up-stars' }, `${starsText(b.lv)} (${(b.lv ?? 0) + 1} z ${sim.UPG.length + 1})`)),
+    h('div', { class: 'dim' }, bonusSummary(s, b)),
+    up ? h('div', { class: 'up-row' },
+      h('button', { class: 'act-btn' + (canUp ? ' primary' : ''), 'data-up': 1, disabled: !canUp, onclick: () => { if (sim.upgrade(s, b)) { sfx('done'); toast(`Vylepšeno na úroveň ${b.lv + 1}`, 'ok'); } onRefresh(); } }, `⬆️ Vylepšit na ${(b.lv ?? 0) + 2}. úroveň (${fmt(up)})`),
+      (b.lv ?? 0) < sim.UPG.length - 1 && h('button', { class: 'act-btn up-max', disabled: !canUp, title: 'Vylepšit co nejvýše podle dostupných peněz', onclick: () => { const n = sim.upgradeMax(s, b); if (n) { sfx('done'); toast(`Vylepšeno o +${n} ${n === 1 ? 'úroveň' : n < 5 ? 'úrovně' : 'úrovní'} (★${b.lv + 1})`, 'ok'); } onRefresh(); } }, '🚀 Max'))
+      : h('div', { class: 'dim' }, 'Nejvyšší úroveň ★★★★★.'),
+    modIds.length > 0 && h('div', { class: 'mod-list' }, ...modIds.map((id) => {
+      const mod = sim.MODS[id], installed = sim.hasMod(b, id), cost = sim.modCost(b, id), afford = cost != null && (s.sandbox || s.money >= cost);
+      return h('div', { class: 'mod-row' },
+        h('header', null, h('b', null, `${mod.icon} ${mod.name}`), installed ? h('span', { class: 'ok' }, '✓ Aktivní')
+          : h('button', { class: 'mini' + (afford ? ' primary' : ''), 'data-mod': id, disabled: !afford, onclick: () => { if (sim.installMod(s, b, id)) { sfx('done'); toast(`Nainstalován modul: ${mod.name}`, 'ok'); } onRefresh(); } }, `Instalovat (${fmt(cost)})`)),
+        h('div', { class: 'dim' }, mod.desc));
+    })),
+    ...evos.map((f) => {
+      const err = sim.upgradeModelErr(s, b, f.id), cost = sim.upgradeModelCost(s, b, f.id);
+      return h('button', { class: 'act-btn' + (!err ? ' primary' : ''), 'data-evo': f.id, disabled: !!err, title: err ?? 'Přestaví budovu na větší model a odečte dřívější vylepšení', onclick: () => {
+        const res = sim.upgradeModel(s, b, f.id);
+        if (res.ok) { sfx('done'); toast(`Povýšeno na: ${f.name}`, 'ok'); select(b); } else toast(res.err, 'err');
+      } }, `🏗️ Povýšit na ${f.name} (${f.w}×${f.h} m) · ${fmt(cost)}${err ? ` — ${err}` : ''}`);
+    }),
+  ];
+}
 function select(b) {
   G.sel = b; viewer?.dispose(); viewer = null; panelDyn = null;
   const p = $('panel');
   p.hidden = !b;
   if (!b) return;
   const s = G.s, close = h('button', { class: 'x', onclick: () => select(null) }, '✕');
-  const demolish = !b.hq && b.k !== 'npc' && h('button', { class: 'danger', onclick: () => { sim.remove(s, b); sfx('remove'); select(null); } }, `Zbourat (vrátí ${fmt(sim.defOf(b.model ?? (b.k === 'hub' ? 'depot' : b.k)).usd)})`);
+  const demolish = !b.hq && b.k !== 'npc' && h('button', { class: 'danger', onclick: () => { sim.remove(s, b); sfx('remove'); select(null); } }, `Zbourat (vrátí ${fmt(sim.defOf(b.model ?? (b.k === 'hub' ? (b.dump ? 'dump' : 'depot') : b.k)).usd)})`);
   if (b.k === 'machine' || b.k === 'miner') machinePanel(p, s, b, close, demolish);
   else if (b.k === 'npc') { // odběratel surovin
     const t = BUYERS[b.t], rows = h('div', { class: 'specs' });
@@ -300,10 +419,51 @@ function select(b) {
     p.replaceChildren(h('header', null, h('h3', null, b.name), close), h('p', null, `Odběratel na mapě. ${t.what}`), h('h4', null, 'Vykupuje'), rows,
       h('p', { class: 'dim' }, `Platí ${Math.round(b.mul * 100)} % ceníkové ceny. Když prodáš víc, než trh za den pobere, cena klesá. Suroviny sem vozí auta: postav silnici od dolu až sem, auta se koupí a přijedou sama.`));
   } else if (b.k === 'hub') {
-    const list = h('div', { class: 'inv' });
-    panelDyn = () => list.replaceChildren(...Object.keys(s.inv).filter((it) => s.inv[it] >= 1 && ITEMS[it]).sort((x, y) => ITEMS[x].cat.localeCompare(ITEMS[y].cat, 'cs')).map((it) => h('div', { title: ITEMS[it].name }, icon(it, 20), h('span', null, ITEMS[it].name), h('b', null, num(Math.floor(s.inv[it]))))));
-    p.replaceChildren(h('header', null, h('h3', null, b.hq ? 'Sklad' : 'Logistické depo'), close), h('p', null, b.hq ? 'Sem se vozí všechno, co vytěžíš a vyrobíš. Suroviny pro vlastní výrobu tu zůstávají a stroje, které se Skladu dotýkají, si je berou samy. Hotové výrobky se samy prodávají na Trhu.' : `Rampa napojená kamiony na Sklad. Každá převezená položka stojí ${sim.DEPOT_FEE} $.`),
-      h('button', { onclick: () => openModal('market') }, 'Otevřít Trh'), h('h4', null, 'Skladem'), list, demolish);
+    const list = h('div', { class: 'inv' }), opsBox = h('div'), dumpBox = h('div');
+    let opsSig = '', dumpSig = '';
+    const okBool = (r) => (typeof r === 'number' ? r > 0 : r?.ok || (r && !r.err && (r.n == null || r.n > 0) && (r.tiles == null || r.tiles > 0)));
+    const quickGrid = b.hq && h('div', { class: 'quick-grid' },
+      h('button', { class: 'act primary', onclick: () => openModal('factories') }, '🏭 Postavit továrnu'),
+      h('button', { class: 'act', onclick: () => { if (okBool(sim.expandHall(s, 8, 6, false))) { sfx('done'); toast('Hala kolem Skladu rozšířena', 'ok'); } else toast('Rozšíření haly se nepovedlo nebo chybí peníze / výzkum', 'err'); } }, '🏗️ Rozšířit halu'),
+      h('button', { class: 'act', onclick: () => { const n = sim.hireAllStaff(s); if (n) sfx('done'); toast(n ? `Najaty plné směny u ${n} budov` : 'Všechny budovy už mají plné směny', n ? 'ok' : ''); opsSig = ''; panelDyn(); } }, '👥 Plné směny všude'),
+      h('button', { class: 'act', onclick: () => { const n = sim.upgradeAll(s); if (n) sfx('done'); toast(n ? `Vylepšeno ${n} budov` : 'Nelze dál vylepšit nebo chybí peníze', n ? 'ok' : ''); opsSig = ''; panelDyn(); } }, '⬆️ Vylepšit vše'),
+      h('button', { class: 'act', onclick: () => { const n = sim.maintAll(s); if (n) sfx('done'); toast(n ? `Zajištěna údržba a opravy (${n})` : 'Všechny stroje už mají údržbu', n ? 'ok' : ''); } }, '🔧 Údržbáři + opravy'),
+      h('button', { class: 'act', onclick: () => { const n = sim.connectAllRoads(s); if (n) sfx('done'); toast(n ? `Postaveny silnice (${n} budov)` : 'Všechny budovy už mají cestu', n ? 'ok' : ''); } }, '🛣️ Napojit vše silnicí'),
+    );
+    panelDyn = () => {
+      list.replaceChildren(...Object.keys(s.inv).filter((it) => s.inv[it] >= 1 && ITEMS[it]).sort((x, y) => ITEMS[x].cat.localeCompare(ITEMS[y].cat, 'cs')).map((it) => h('div', { title: ITEMS[it].name }, icon(it, 20), h('span', null, ITEMS[it].name), h('b', null, num(Math.floor(s.inv[it]))))));
+      if (b.dump) {
+        const adj = s.list.filter((x) => (x.k === 'miner' || x.k === 'machine') && x._adj?.hub === b);
+        const spoilN = Math.floor(s.inv.spoil ?? 0), autoSpoil = !!s.autoSell.spoil;
+        const ds = `${adj.length}:${spoilN}:${autoSpoil}`;
+        if (ds !== dumpSig) {
+          dumpSig = ds;
+          dumpBox.replaceChildren(
+            h('div', { class: 'specs' },
+              kv('Přilehlé budovy', adj.length ? adj.map((x) => MODELS[x.model]?.name.split(':')[0] ?? 'Stroj').join(', ') : 'žádná (postav těsně vedle dolu)'),
+              kv('Hlušina skladem', `${num(spoilN)} t`)),
+            h('div', { class: 'quick-grid' },
+              h('button', { class: 'act', 'data-spoil-auto': 1, onclick: () => { s.autoSell.spoil = !s.autoSell.spoil; dumpSig = ''; panelDyn(); toast(s.autoSell.spoil ? 'Hlušina se automaticky prodává na Trhu' : 'Hlušina zůstává uložena ve skladu', 'ok'); } }, autoSpoil ? '🔄 Auto-prodej hlušiny: ZAP' : '📦 Hlušinu skladovat: ZAP'),
+              h('button', { class: 'act', disabled: spoilN < 1, onclick: () => { const usd = sim.sell(s, 'spoil', spoilN); if (usd > 0) { sfx('coin'); toast(`Prodáno ${num(spoilN)} t hlušiny za ${fmt(usd)}`, 'ok'); } dumpSig = ''; panelDyn(); } }, `💰 Prodat hlušinu (${num(spoilN)} t)`)));
+        }
+      }
+      const n = sim.staffed(b), up = sim.upgradeCost(b), ev = sim.evolutions(s, b), mods = (b.mods ?? []).join(), sig = `${n}:${b.lv ?? 0}:${mods}:${up ? s.money >= up : 0}:${ev.map((f) => !sim.upgradeModelErr(s, b, f.id)).join()}:${Math.floor(s.money)}`;
+      if (sig !== opsSig) {
+        opsSig = sig;
+        opsBox.replaceChildren(
+          h('div', { class: 'kv' }, h('span', null, 'Obsluha skladu'), h('b', null, h('button', { class: 'mini', onclick: () => { sim.setStaff(s, b, n - 1); panelDyn(); } }, '−'), ` ${n} z 6 `, h('button', { class: 'mini', onclick: () => { sim.setStaff(s, b, n + 1); panelDyn(); } }, '+'), ' ', h('button', { class: 'mini', onclick: () => { sim.setStaff(s, b, 6); panelDyn(); } }, '3×'))),
+          ...upgradeSection(s, b, () => { opsSig = ''; panelDyn(); }));
+      }
+    };
+    p.replaceChildren(h('header', null, h('h3', null, b.hq ? 'Sklad' : b.dump ? 'Polní sklad (u dolu)' : 'Logistické depo'), close),
+      h('p', null, b.hq ? 'Sem se vozí všechno, co vytěžíš a vyrobíš. Suroviny pro vlastní výrobu tu zůstávají a stroje, které se Skladu dotýkají, si je berou samy. Hotové výrobky se samy prodávají na Trhu.'
+        : b.dump ? 'Malý sklad (2×2 m) přímo vedle dolu nebo lomu. Automaticky a zdarma přebírá hlušinu i přebytečné suroviny z vedlejšího dolu, aby se hromada nikdy nezacpala.'
+          : `Rampa napojená kamiony na Sklad. Každá převezená položka stojí ${num(sim.depotFeeOf(b), 1)} $.`),
+      b.dump && dumpBox,
+      h('button', { onclick: () => openModal('market') }, 'Otevřít Trh'),
+      b.hq && h('h4', null, 'Rychlé akce firmy'), quickGrid,
+      h('h4', null, 'Lidé a vylepšení'), opsBox,
+      h('h4', null, 'Skladem'), list, demolish);
   } else {
     const names = { belt: 'Dopravník', junction: 'Křížení', splitter: 'Rozdělovač', sorter: 'Třídič', unloader: 'Výdejník' };
     const body = [h('p', null, sim.defOf(b.k).what)];
@@ -324,39 +484,48 @@ function select(b) {
 function machinePanel(p, s, b, close, demolish) {
   const m = MODELS[b.model], kd = KINDS[m.kind], hw = HW[m.kind], speed = m.rate / kd.ref;
   const st = h('div', { class: 'status' }), bar = h('i'), util = h('b'), stock = h('div', { class: 'dim' });
-  const barBox = h('div', { class: 'mbars' }), crewBox = h('div');
-  let crewSig = '';
-  const parts = [h('header', null, icon(b.model, 40), h('div', null, h('h3', null, m.name), h('div', { class: 'dim' }, `${kd.name} · ${TIER[m.tier]}`)), close), st, h('div', { class: 'bar' }, bar), barBox];
-  if (m.crew) parts.push(h('h4', null, 'Lidé a vylepšení'), crewBox);
+  const barBox = h('div', { class: 'mbars' }), quickBox = h('div', { class: 'quick-box' }), crewBox = h('div');
+  let crewSig = '', quickSig = '', needRoad = false;
+  const parts = [h('header', null, icon(b.model, 40), h('div', null, h('h3', null, m.name), h('div', { class: 'dim' }, `${kd.name} · ${TIER[m.tier]}`)), close), st, h('div', { class: 'bar' }, bar), quickBox, barBox];
+  parts.push(h('h4', null, m.crew ? 'Lidé a vylepšení' : 'Vylepšení'), crewBox);
   const maintBox = h('div');
   let maintSig = '';
   parts.push(h('h4', null, 'Poruchy a údržba'), maintBox);
   const maintDyn = () => { // tlačítko se překreslí jen při změně, jinak by klik propadl
-    const left = b.mtbf ? Math.max(0, b.mtbf - (b.wear ?? 0)) : null, sig = [b.mt, b.fails, b.st === 'broken', left && Math.round(left / 10)].join();
+    const cool = sim.hasMod(b, 'cool'), fixH = cool ? sim.FIX_H / 2 : sim.FIX_H;
+    const left = b.mtbf ? Math.max(0, b.mtbf - (b.wear ?? 0)) : null, sig = [b.mt, b.fails, b.st === 'broken', cool, left && Math.round(left / 10)].join();
     if (sig === maintSig) return;
     maintSig = sig;
     maintBox.replaceChildren(
-      h('div', { class: 'dim' }, `Stroj se občas porouchá a oprava trvá ${sim.FIX_H} h a stojí ${fmt(sim.repairCost(b))}. Poruch zatím: ${b.fails ?? 0}.${left != null ? ` Další asi za ${num(left)} h práce.` : ''} Údržbář je jeden člověk na každou odpracovanou směnu (${fmt(sim.WAGE_DAY)}) a poruchy jsou s ním třikrát řidší. Doby jsou herní hodnoty.`),
+      h('div', { class: 'dim' }, `Stroj se občas porouchá a oprava trvá ${fixH} h a stojí ${fmt(sim.repairCost(b))}. Poruch zatím: ${b.fails ?? 0}.${left != null ? ` Další asi za ${num(left)} h práce.` : ''} Údržbář je jeden člověk na každou odpracovanou směnu (${fmt(sim.WAGE_DAY)}) a poruchy jsou s ním třikrát řidší. Doby jsou herní hodnoty.`),
       h('button', { 'data-maint': 1, class: b.mt ? '' : 'primary', onclick: () => { sim.setMaint(s, b, !b.mt); toast(b.mt ? 'Údržbář nastoupil: poruchy budou třikrát řidší' : 'Údržbář odešel', b.mt ? 'ok' : ''); maintSig = ''; panelDyn(); } }, b.mt ? 'Propustit údržbáře' : 'Najmout údržbáře'));
   };
   const crewDyn = () => { // tlačítka se překreslí, jen když se něco změnilo (jinak by klik mohl propadnout)
-    const n = sim.staffed(b), up = sim.upgradeCost(b), sw = sim.swaps(s, b), sig = [n, b.lv, up && s.money >= up, ...sw.map((f) => f.id + !sim.swapErr(s, b, f.id))].join();
+    const n = m.crew ? sim.staffed(b) : 0, up = sim.upgradeCost(b), sw = sim.swaps(s, b), ev = sim.evolutions(s, b);
+    const sig = [n, b.lv, (b.mods ?? []).join(), up && s.money >= up, Math.floor(s.money), ...ev.map((f) => f.id + !sim.upgradeModelErr(s, b, f.id)), ...sw.map((f) => f.id + !sim.swapErr(s, b, f.id))].join();
     if (sig === crewSig) return;
     crewSig = sig;
     crewBox.replaceChildren(
-      h('div', { class: 'kv' }, h('span', null, 'Zaměstnanci'), h('b', null, h('button', { class: 'mini', 'data-staff': -1, onclick: () => { sim.setStaff(s, b, n - 1); panelDyn(); } }, '−'), ` ${n} z ${3 * m.crew} `, h('button', { class: 'mini', 'data-staff': 1, onclick: () => { sim.setStaff(s, b, n + 1); panelDyn(); } }, '+'))),
-      h('div', { class: 'dim' }, `Směna je ${m.crew} ${m.crew === 1 ? 'člověk' : m.crew < 5 ? 'lidé' : 'lidí'} a pracuje 8 hodin denně; tři směny jedou nepřetržitě. Teď ${num(sim.hoursOf(b), 0)} h denně, mzdy ${fmt(n * sim.WAGE_DAY)} za den práce (${fmt(sim.WAGE_DAY)} za směnu). Když budova stojí, neplatí se.`),
-      h('div', { class: 'kv' }, h('span', null, 'Úroveň'), h('b', null, `${(b.lv ?? 0) + 1} z ${sim.UPG.length + 1}`)),
-      up ? h('button', { 'data-up': 1, disabled: !s.sandbox && s.money < up, onclick: () => { if (sim.upgrade(s, b)) { sfx('done'); toast(`Vylepšeno na úroveň ${b.lv + 1}`, 'ok'); } panelDyn(); } }, `Vylepšit za ${fmt(up)}: o polovinu základního výkonu víc`) : h('div', { class: 'dim' }, 'Nejvyšší úroveň.'),
+      ...(m.crew ? [
+        h('div', { class: 'kv' }, h('span', null, 'Zaměstnanci'), h('b', null, h('button', { class: 'mini', 'data-staff': -1, onclick: () => { sim.setStaff(s, b, n - 1); panelDyn(); } }, '−'), ` ${n} z ${3 * m.crew} `, h('button', { class: 'mini', 'data-staff': 1, onclick: () => { sim.setStaff(s, b, n + 1); panelDyn(); } }, '+'))),
+        h('div', { class: 'staff-row' },
+          h('button', { class: 'mini' + (n === m.crew ? ' primary' : ''), onclick: () => { sim.setStaff(s, b, m.crew); panelDyn(); } }, '1× směna'),
+          h('button', { class: 'mini' + (n === 2 * m.crew ? ' primary' : ''), onclick: () => { sim.setStaff(s, b, 2 * m.crew); panelDyn(); } }, '2× směny'),
+          h('button', { class: 'mini' + (n >= 3 * m.crew ? ' primary' : ''), 'data-staff-max': 1, onclick: () => { sim.setStaff(s, b, 3 * m.crew); panelDyn(); } }, '3× (24h)')),
+        h('div', { class: 'dim' }, `Směna je ${m.crew} ${m.crew === 1 ? 'člověk' : m.crew < 5 ? 'lidé' : 'lidí'} a pracuje 8 hodin denně; tři směny jedou nepřetržitě. Teď ${num(sim.hoursOf(b), 0)} h denně, mzdy ${fmt(n * sim.WAGE_DAY)} za den práce (${fmt(sim.WAGE_DAY)} za směnu). Když budova stojí, neplatí se.`),
+      ] : []),
+      ...upgradeSection(s, b, () => { crewSig = ''; quickSig = ''; maintSig = ''; panelDyn(); }),
       ...sw.map((f) => h('button', { 'data-swap': f.id, disabled: !!sim.swapErr(s, b, f.id), title: 'Stejně funguje položení lepšího stroje přes tenhle. Hromada, cesty i auta zůstanou.', onclick: () => { if (!sim.place(s, f.id, b.x, b.y).err) { sfx('done'); toast(`Vyměněno za: ${f.name}`, 'ok'); select(b); } } }, `Vyměnit za ${f.name}: doplatek ${fmt(sim.swapCost(b, f.id))}`)));
   };
-  const found = h('div', { class: 'specs' }), haul = h('div'), [cx, cy] = sim.centerOf(b);
-  let age = 0, opts = [], sig = '';
+  const found = h('div', { class: 'specs' }), drillBox = h('div'), reclaimBox = h('div'), haul = h('div'), [cx, cy] = sim.centerOf(b);
+  let age = 0, opts = [], sig = '', drillSig = '', recSig = '';
   const dest = h('select', { onchange: (e) => { const t = opts[+e.target.value]; b.to = t ? [t.x, t.y] : null; b.auto = !t; b._sv = null; age = 0; } }); // ruční volba vypne automatiku
-  const nameOf = (t) => t.name ?? (t.model ? MODELS[t.model].name.split(':')[0] : t.hq ? 'Sklad' : 'Logistické depo');
+  const nameOf = (t) => t.name ?? (t.model ? MODELS[t.model].name.split(':')[0] : t.hq ? 'Sklad' : t.dump ? 'Polní sklad' : 'Logistické depo');
   const hauls = (b.k === 'miner' && m.kind !== 'm_drill') || (b.k === 'machine' && kd.cat === 'Suroviny' && !ROUTES[b.prod]?.power); // auta patří dolům, pecím a hutím; elektrárna nic neodváží
   const refreshHaul = () => {
     const list = sim.sinks(s, b), cur = b.to && list.find((x) => x.t === sim.at(s, b.to[0], b.to[1])), direct = b._adj?.hub || b._adj?.npc || b._adj?.mach?.length;
+    const hasExtRoad = b.k === 'miner' && !!b._adj?.hub && list.some((x) => x.path && x.t.k !== 'hub');
+    needRoad = !direct && !list.some((x) => x.path);
     const txt = list.map((x) => `${short(x.it)} → ${nameOf(x.t)} · ${x.t.k === 'machine' ? 'vlastní výroba' : `${fmt(x.usd)} za tunu`} · ${x.path ? `${x.path.length} m po silnici` : 'nevede tam silnice'}`), key = txt.join('|') + (cur ? list.indexOf(cur) : -1) + (b.auto !== false);
     if (sig !== key && document.activeElement !== dest) { // seznam cílů se překreslí, jen když se změnil a není zrovna rozbalený
       sig = key; opts = list.map((x) => x.t);
@@ -364,14 +533,17 @@ function machinePanel(p, s, b, close, demolish) {
     }
     const cars = b.cars ?? [];
     haul.replaceChildren(h('div', { class: 'dim' }, `Na hromadě ${b.out.length} t z ${sim.PILE} t.`),
-      direct ? h('div', { class: 'dim' }, 'Stojí těsně u jiné budovy a předává jí rovnou, auta nepotřebuje.')
-        : !list.some((x) => x.path) ? h('div', { class: 'warn' }, 'Nevede odsud žádná silnice k cíli. V záložce Doprava vyber cestu, klikni sem a pak na cíl (Sklad, pec, odběratel).')
-          : b.carWait ? h('div', { class: 'warn' }, `Na první auto chybí peníze (ojetý pick-up stojí ${fmt(CARS.car_pickup.usd)}). Koupí se samo, jakmile budou.`)
-            : h('div', { class: 'dim' }, `Auta se kupují a jezdí sama (nejvýš ${sim.MAXCARS}); další auto se koupí, jen když po nákupu zůstane aspoň tolik, kolik stálo. Nafta a servis: ${[...new Set((cars.length ? cars : [{ m: 'car_pickup' }]).map((c) => `${num(CARS[c.m].km, 2)} $/km`))].join(', ')}. Před každou jízdou si auto vybere cíl: nejdřív vlastní výroba, která má místo, jinak nejlepší cena.`),
+      hasExtRoad ? h('div', { class: 'dim' }, `✅ Vedle stojí ${nameOf(b._adj.hub)} (okamžitě přebírá hlušinu i přebytky) a auta zároveň vozí suroviny po silnici. `, h('button', { class: 'mini', onclick: () => select(b._adj.hub) }, 'Otevřít sklad'))
+        : direct ? h('div', { class: 'dim' }, b._adj?.hub ? `✅ Hned vedle stojí ${nameOf(b._adj.hub)}: přebírá všechnu hlušinu i suroviny rovnou, auta nepotřebuje. ` : 'Stojí těsně u jiné budovy a předává jí rovnou, auta nepotřebuje.', b._adj?.hub && h('button', { class: 'mini', onclick: () => select(b._adj.hub) }, 'Otevřít sklad'))
+          : !list.some((x) => x.path) ? h('div', { class: 'warn' }, 'Nevede odsud žádná silnice k cíli. Postav hned vedle Polní sklad (800 $), nebo v záložce Doprava natáhni cestu k cíli.')
+            : b.carWait ? h('div', { class: 'warn' }, `Na první auto chybí peníze (ojetý pick-up stojí ${fmt(CARS.car_pickup.usd)}). Koupí se samo, jakmile budou.`)
+              : h('div', { class: 'dim' }, `Auta se kupují a jezdí sama (nejvýš ${sim.MAXCARS}); další auto se koupí, jen když po nákupu zůstane aspoň tolik, kolik stálo. Nafta, servis a řidič: ${[...new Set((cars.length ? cars : [{ m: 'car_pickup' }]).map((c) => `${num(CARS[c.m].km, 2)} $/km`))].join(', ')}. Před každou jízdou si auto vybere cíl: nejdřív vlastní výroba, která má místo, jinak nejlepší cena.`),
       ...cars.map((c) => { const d = c.to && sim.at(s, c.to[0], c.to[1]); return h('div', { class: 'kv' }, h('span', null, CARS[c.m].name), h('b', null, c.dir > 0 ? `veze ${c.n} t${d ? ' → ' + nameOf(d) : ''}` : c.dir < 0 ? 'vrací se' : c.n >= CARS[c.m].cap ? 'čeká: cíl má plno' : `nakládá ${c.n} z ${CARS[c.m].cap} t`)); }));
   };
   if (b.k === 'miner') { // co je v dosahu: na povrchu, nebo v patrech, kam už vrt či důl došel
+    if (m.kind === 'm_drill') parts.push(h('h4', null, 'Metoda vrtání'), drillBox);
     parts.push(h('h4', null, m.kind === 'm_miner' ? 'Zásoby v dosahu' : 'Co je pod zemí v dosahu'), found);
+    if (m.kind === 'm_miner') parts.push(reclaimBox);
     if (m.kind === 'm_shaft') parts.push(h('label', null, 'Těžit v hloubce', h('select', { onchange: (e) => { b.goal = +e.target.value; b.cur = null; b.oi = 0; age = 0; } },
       [...Array(m.maxLv)].map((_, i) => h('option', { value: i + 1, selected: b.goal === i + 1 }, `${(i + 1) * LEVEL_M} m (patro ${i + 1})`)))),
       h('div', { class: 'dim' }, `Hloubení stojí asi ${fmt(m.sink)} za metr a těžba je s každým patrem dražší. Kde co leží, zjistí levněji průzkumný vrt. Tlačítko Pod zem (G) ukáže patra v řezu.`));
@@ -415,7 +587,8 @@ function machinePanel(p, s, b, close, demolish) {
     null);
   parts.push(h('h4', null, 'Stroj'), kv('Cena', fmt(m.usd), ' ', badge(m), ' ', link(m.src)), m.note && h('div', { class: 'dim' }, m.note),
     kv('Výkon', `${num(m.rate, m.rate < 10 ? 2 : 0)} ${kd.u === 't' && m.crew ? 't za hodinu práce' : UNIT[kd.u]}`, kd.cat === 'Suroviny' && m.crew ? [' ', badge({ fact: m.rateFact, note: 'výkon stroje' })] : ''), m.kw > 0 && kv('Příkon', `${num(m.kw, 1)} kW`), kv('Půdorys', `${m.w} × ${m.h} m`),
-    m.wafer && kv('Wafery', m.wafer.join(' / ') + ' mm'), m.res && kv('Rozlišení', `${num(m.res)} nm`), m.reach && kv('Pracovní okruh', `${m.reach} m`));
+    m.wafer && kv('Wafery', m.wafer.join(' / ') + ' mm'), m.res && kv('Rozlišení', `${num(m.res)} nm`), m.reach && kv('Pracovní okruh', `${m.reach} m`),
+    m.buildDays > 0 && kv('Doba stavby', `${m.buildDays} ${m.buildDays === 1 ? 'den' : m.buildDays < 5 ? 'dny' : 'dní'}`));
   if (hw) {
     const box = h('div', { class: 'v3d' });
     parts.push(h('p', null, hw.what), hw.specs?.length && h('div', { class: 'specs' }, hw.specs.map(([a, v]) => kv(a, v))),
@@ -431,22 +604,81 @@ function machinePanel(p, s, b, close, demolish) {
       MACHINE_BUY[m.kind] && [h('h4', null, 'Kde se takový stroj dá pořídit'), MACHINE_BUY[m.kind].map((o) => h('div', { class: 'kv' }, h('span', null, o.tier), h('b', null, link(o.url, o.label), o.price ? ` · ${o.price}` : '')))]);
   }
   parts.push(demolish);
+  const quickDyn = () => {
+    const missBuy = b.st === 'miss' && b.miss && sim.canBuy(s, b.miss) ? b.miss : '';
+    const needStaff = m.crew && sim.staffed(b) < 3 * m.crew;
+    const needDump = hauls && !b._adj?.hub;
+    const up = sim.upgradeCost(b), canQuickUp = !!up && (s.sandbox || s.money >= up);
+    const sig = `${b.build > 0}:${b.fix > 0}:${missBuy}:${needStaff}:${needDump}:${hauls && needRoad}:${canQuickUp ? up : 0}:${Math.floor(s.money)}`;
+    if (sig === quickSig) return;
+    quickSig = sig;
+    const btns = [];
+    if (b.build > 0) btns.push(h('button', { class: 'act-btn primary', onclick: () => { if (sim.finishBuildNow(s, b)) { sfx('done'); toast('Stavba ihned dokončena', 'ok'); quickSig = ''; panelDyn(); } else toast('Chybí peníze na urychlení stavby', 'err'); } }, '⚡ Dokončit stavbu ihned'));
+    if (b.fix > 0) btns.push(h('button', { class: 'act-btn primary', onclick: () => { if (sim.fixBrokenNow(s, b)) { sfx('done'); toast('Porucha ihned opravena', 'ok'); quickSig = ''; panelDyn(); } else toast('Chybí peníze na opravu', 'err'); } }, '⚡ Opravit poruchu ihned'));
+    if (missBuy) btns.push(h('button', { class: 'act-btn', onclick: () => {
+      const cap = sim.capOf(b)?.[missBuy] ?? 5, cur = b.buf?.[missBuy] ?? 0, qtyNeed = Math.max(2, Math.ceil(cap - cur));
+      if (sim.buy(s, missBuy, qtyNeed)) {
+        if (!b._adj?.hub && b.buf) { const take = Math.min(qtyNeed, s.inv[missBuy] ?? 0); s.inv[missBuy] -= take; b.buf[missBuy] = (b.buf[missBuy] ?? 0) + take; }
+        if (b._adj?.hub) s.autoBuy[missBuy] = Math.max(s.autoBuy[missBuy] ?? 0, qtyNeed * 2);
+        sfx('done'); toast(`Doplněno: ${ITEMS[missBuy]?.name ?? missBuy}`, 'ok'); quickSig = ''; panelDyn();
+      } else toast('Nedostatek peněz na nákup materiálu', 'err');
+    } }, `⚡ Doplnit ${ITEMS[missBuy]?.name.split(' (')[0] ?? missBuy}`));
+    if (needStaff) btns.push(h('button', { class: 'act-btn', onclick: () => { sim.setStaff(s, b, 3 * m.crew); sfx('done'); toast('Najaty plné 3 směny', 'ok'); quickSig = ''; panelDyn(); } }, '👥 Najmout plné 3 směny'));
+    if (canQuickUp) btns.push(h('button', { class: 'act-btn', 'data-quick-up': 1, onclick: () => { if (sim.upgrade(s, b)) { sfx('done'); toast(`Vylepšeno na úroveň ${b.lv + 1}`, 'ok'); } crewSig = ''; quickSig = ''; panelDyn(); } }, `⬆️ Vylepšit na ${(b.lv ?? 0) + 2}. úroveň (${fmt(up)})`));
+    if (needDump) btns.push(h('button', { class: 'act-btn primary', 'data-dump-next': 1, onclick: () => {
+      const r = sim.buildDumpNextTo(s, b);
+      if (r && !r.err) { sfx('done'); toast(r.already ? 'Sklad už u dolu stojí' : 'Polní sklad postaven hned vedle (přebírá hlušinu i suroviny)', 'ok'); age = 0; quickSig = ''; panelDyn(); }
+      else toast(r?.err ?? 'Polní sklad se nepodařilo postavit', 'err');
+    } }, `▤ Postavit sklad vedle (${fmt(sim.defOf('dump').usd)}) — na hlušinu a suroviny`));
+    if (hauls && needRoad) btns.push(h('button', { class: 'act-btn primary', onclick: () => {
+      const r = sim.autoConnectRoad(s, b);
+      if (r && !r.err) { const n = Array.isArray(r.tiles) ? r.tiles.length : r.tiles; sfx('done'); toast(`Silnice postavena (${n ?? ''} m)`, 'ok'); needRoad = false; age = 0; quickSig = ''; panelDyn(); }
+      else toast(r?.err ?? 'Silnici se nepodařilo postavit', 'err');
+    } }, '🛣️ Postavit silnici do Skladu automaticky'));
+    quickBox.replaceChildren(...btns);
+  };
   p.replaceChildren(...parts.flat(3).filter(Boolean));
   panelDyn = () => {
     st.textContent = sim.statusOf(s, b); st.dataset.st = b.st;
     barBox.replaceChildren(...barsOf(s, b));
-    if (m.crew) crewDyn();
+    crewDyn();
     maintDyn();
-    bar.style.width = (b.job ? Math.min(100, (b.job.t / b.job.T) * 100) : b.k !== 'miner' ? 0 : m.kind === 'm_miner' ? b.acc * 100 : ((b.dep % LEVEL_M) / LEVEL_M) * 100) + '%';
+    bar.style.width = (b.build > 0 && m.buildDays ? Math.max(0, Math.min(100, (1 - b.build / (m.buildDays * 24)) * 100)) : b.job ? Math.min(100, (b.job.t / b.job.T) * 100) : b.k !== 'miner' ? 0 : m.kind === 'm_miner' ? b.acc * 100 : ((b.dep % LEVEL_M) / LEVEL_M) * 100) + '%';
     if (b.k === 'miner') { // zásoby a odvoz se přepočítávají jen občas, je to pár tisíc dlaždic
-      if (age++ % 8) return;
-      if (hauls) refreshHaul();
-      const list = (l) => Object.entries(sim.survey(s, cx, cy, m.reach, l)).map(([o, t]) => `${ITEMS[ORES[o].id].name} ${num(t)} t`).join(', ') || 'nic';
-      const levels = m.kind === 'm_miner' ? [0] : [...Array(Math.min(m.maxLv, Math.floor(b.dep / LEVEL_M)))].map((_, i) => i + 1);
-      found.replaceChildren(...(levels.length ? levels.map((l) => kv(l ? `${l * LEVEL_M} m` : 'povrch', list(l))) : [h('div', { class: 'dim' }, 'Zatím nic: první patro je v hloubce 50 m.')]));
+      if (m.kind === 'm_drill' && drillSig !== String(!!b.rc)) {
+        drillSig = String(!!b.rc);
+        drillBox.replaceChildren(
+          h('div', { class: 'dim' }, b.rc ? `RC vrtání (${sim.RC_OPEX} $/m): 2× rychlejší, ale ukáže jen odhad ±30 %.` : `Jádrové vrtání (${KINDS.m_drill.opex} $/m): pomalejší, ale zjistí přesné zásoby.`),
+          h('button', { 'data-drill': 1, onclick: () => { sim.setDrillMode(s, b, !b.rc); age = 0; panelDyn(); } }, b.rc ? 'Přepnout na jádrové vrtání (přesné)' : 'Přepnout na RC vrtání (2× rychlejší, levné)'));
+      }
+      if (!(age++ % 8)) {
+        if (hauls) refreshHaul();
+        const sv = (l) => (m.kind === 'm_drill' ? sim.drillSurvey(s, b, l) : sim.survey(s, cx, cy, m.reach, l));
+        const list = (l) => Object.entries(sv(l)).map(([o, t]) => `${ITEMS[ORES[o].id].name} ${m.kind === 'm_drill' && b.rc ? '~' : ''}${num(t)} t`).join(', ') || 'nic';
+        const levels = m.kind === 'm_miner' ? [0] : [...Array(Math.min(m.maxLv, Math.floor(b.dep / LEVEL_M)))].map((_, i) => i + 1);
+        found.replaceChildren(...(levels.length ? levels.map((l) => kv(l ? `${l * LEVEL_M} m` : 'povrch', list(l))) : [h('div', { class: 'dim' }, 'Zatím nic: první patro je v hloubce 50 m.')]));
+        if (m.kind === 'm_miner') {
+          const pits = [];
+          for (let py = cy - m.reach; py <= cy + m.reach; py++) for (let px = cx - m.reach; px <= cx + m.reach; px++) {
+            if ((px - cx) ** 2 + (py - cy) ** 2 <= m.reach ** 2 && sim.isPit(s, px, py) && sim.left(s, px, py, 0) <= 0) pits.push([px, py]);
+          }
+          const rs = `${pits.length}:${s.money >= sim.RECLAIM_USD}`;
+          if (rs !== recSig) {
+            recSig = rs;
+            reclaimBox.replaceChildren(...(pits.length ? [h('button', { 'data-reclaim': 1, disabled: !s.sandbox && s.money < sim.RECLAIM_USD, onclick: () => {
+              let n = 0;
+              for (const [px, py] of pits) if (sim.reclaim(s, px, py)) n++;
+              if (n) { sfx('done'); toast(`Rekultivováno ${n} m² jámy`, 'ok'); }
+              recSig = ''; age = 0; panelDyn();
+            } }, `Rekultivovat vytěžené jámy (${pits.length} m² za ${fmt(pits.length * sim.RECLAIM_USD)})`)] : []));
+          }
+        }
+      }
+      quickDyn();
       return;
     }
     if (hauls && !(age++ % 8)) refreshHaul();
+    quickDyn();
     util.textContent = `${Math.round(b.busy * 100)} %`;
     const q = b.q.map((w) => ITEMS[w].name.split(' – ')[0]), buf = Object.entries(b.buf).filter(([, n]) => n > 0.005).map(([it, n]) => `${num(n, 2)}× ${ITEMS[it].name}`);
     stock.textContent = [q.length && `Ve frontě: ${q.join(', ')}`, buf.length && `U stroje: ${buf.join(', ')}`, b.out.length && `Na výstupu: ${b.out.length}`].filter(Boolean).join(' · ');
@@ -476,11 +708,107 @@ function chart(hist, series, zero = true) { // zero = osa od nuly (příjmy a v�
   g.font = '12px Bahnschrift, "Segoe UI", sans-serif'; g.fillStyle = '#8a94a3'; g.strokeStyle = '#2f3743'; g.lineWidth = 1;
   for (let k = 0; k <= 4; k++) { const v = lo + ((hi - lo) * k) / 4, y = Y(v); g.beginPath(); g.moveTo(P, y); g.lineTo(W - 8, y); g.stroke(); g.fillText(fmt(v).replace(' $', ''), 2, y + 4); }
   for (let d = Math.ceil(t0 / sim.DAY); d * sim.DAY <= t1; d++) g.fillText(`den ${d + 1}`, X(d * sim.DAY) - 14, H - 6);
-  for (const [i, col] of series) { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); hist.forEach((p, n) => (n ? g.lineTo(X(p[0]), Y(p[i])) : g.moveTo(X(p[0]), Y(p[i])))); g.stroke(); }
+  for (const [i, col] of series) {
+    if (!hist.length) continue;
+    const pts = hist.map((p) => [X(p[0]), Y(p[i])]);
+    const grad = g.createLinearGradient(0, 12, 0, H - 22);
+    if (/^#[0-9a-f]{6}$/i.test(col)) { grad.addColorStop(0, `${col}44`); grad.addColorStop(1, `${col}00`); }
+    else { grad.addColorStop(0, 'rgba(255,255,255,0.16)'); grad.addColorStop(1, 'rgba(255,255,255,0)'); }
+    g.fillStyle = grad;
+    g.beginPath();
+    pts.forEach(([x, y], n) => (n ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.lineTo(pts.at(-1)[0], H - 22); g.lineTo(pts[0][0], H - 22); g.closePath(); g.fill();
+    g.strokeStyle = col; g.lineWidth = 2.5; g.lineJoin = 'round'; g.lineCap = 'round';
+    g.beginPath(); pts.forEach(([x, y], n) => (n ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+    const [lx, ly] = pts.at(-1);
+    g.fillStyle = col;
+    g.save(); g.globalAlpha = 0.28; g.beginPath(); g.arc(lx, ly, 7.5, 0, Math.PI * 2); g.fill(); g.restore();
+    g.beginPath(); g.arc(lx, ly, 4, 0, Math.PI * 2); g.fill();
+  }
   return c;
 }
 const STUCK = { miss: 'chybí vstup', full: 'plno: není kam dávat', staff: 'nikdo nepracuje', money: 'došly peníze', broken: 'porucha', empty: 'vytěženo', tape: 'nezaplacený návrh čipu', cap: 'čeká na dávky v oběhu' };
+function buildAndFly(routeId) {
+  const s = G.s, r = sim.buildFactory(s, routeId);
+  if (!r || r.err) {
+    toast(r?.err ?? 'Továrnu teď nejde postavit', 'err', 5000);
+    sfx('error');
+    return r;
+  }
+  sfx('done');
+  closeModal();
+  renderBuild();
+  renderQuest();
+  const x = r.x ?? r.b?.x ?? 0, y = r.y ?? r.b?.y ?? 0;
+  G.under = false;
+  G.fly = { x: x + 4, y: y + 2, z: 26, pitch: 0.85 };
+  if (r.b) select(r.b);
+  toast(`Továrna postavena: ${ROUTES[routeId]?.name ?? routeId}`, 'ok', 6000);
+  return r;
+}
 const MODALS = {
+  factories() {
+    const s = G.s, okBool = (r) => (typeof r === 'number' ? r > 0 : r?.ok || (r && !r.err && (r.n == null || r.n > 0) && (r.tiles == null || r.tiles > 0)));
+    const redo = () => MODALS.factories();
+    const machs = s.list.filter((b) => b.k === 'machine' || b.k === 'miner');
+    const owned = s.list.filter((b) => b.k === 'hub' || b.k === 'machine' || b.k === 'miner')
+      .sort((a, c) => (a.hq ? -3 : a.k === 'hub' ? -2 : a.k === 'miner' ? -1 : 0) - (c.hq ? -3 : c.k === 'hub' ? -2 : c.k === 'miner' ? -1 : 0));
+    const needStaff = s.list.filter((b) => (b.k === 'hub' && sim.staffed(b) < 6) || (b.model && MODELS[b.model].crew && sim.staffed(b) < 3 * MODELS[b.model].crew)).length;
+    const upCount = s.list.filter((b) => (b.k === 'hub' || b.model) && sim.upgradeCost(b)).length;
+    const modCount = s.list.filter((b) => (b.model ? Object.keys(sim.MODS) : b.hq ? ['cap'] : []).some((id) => !sim.hasMod(b, id))).length;
+    const bulk = h('div', { class: 'row' },
+      h('button', { class: 'primary', onclick: () => { const n = sim.hireAllStaff(s); if (n) sfx('done'); toast(n ? `Najaty plné směny u ${n} budov` : 'Všechny budovy už mají plné směny', n ? 'ok' : ''); redo(); } }, `👥 Plné 3 směny všude (${needStaff})`),
+      h('button', { onclick: () => { const n = sim.upgradeAll(s); if (n) sfx('done'); toast(n ? `Vylepšeno ${n} budov` : 'Na další vylepšení teď nejsou peníze nebo už jsou na maximu', n ? 'ok' : ''); redo(); } }, `⬆️ Vylepšit vše (${upCount})`),
+      h('button', { onclick: () => { const n = sim.installAllMods(s); if (n) sfx('done'); toast(n ? `Nainstalováno ${n} modulů` : 'Dostupné moduly už jsou nainstalovány nebo chybí peníze', n ? 'ok' : ''); redo(); } }, `🛡️ Nainstalovat moduly všude (${modCount})`),
+      h('button', { onclick: () => { const n = sim.maintAll(s); if (n) sfx('done'); toast(n ? `Zajištěna údržba a opravy (${n})` : 'Všechny stroje už mají údržbu', n ? 'ok' : ''); redo(); } }, '🔧 Údržbáři + opravy všude'),
+      h('button', { onclick: () => { const n = sim.connectAllRoads(s); if (n) sfx('done'); toast(n ? `Postaveny silnice (${n} budov)` : 'Všechny budovy už mají cestu', n ? 'ok' : ''); redo(); } }, '🛣️ Napojit vše silnicí'),
+      h('button', { onclick: () => { if (okBool(sim.expandHall(s, 8, 6, false))) { sfx('done'); toast('Hala kolem Skladu rozšířena', 'ok'); } else toast('Halu už nelze rozšířit nebo chybí peníze / výzkum', 'err'); redo(); } }, '🏗️ Rozšířit halu'),
+    );
+    const builtRows = owned.map((b) => {
+      const title = b.k === 'hub' ? (b.hq ? 'Centrální Sklad' : b.dump ? 'Polní sklad' : 'Logistické depo') : MODELS[b.model].name;
+      const up = sim.upgradeCost(b), ev = sim.evolutions(s, b)[0], evErr = ev && sim.upgradeModelErr(s, b, ev.id);
+      const icons = (b.mods ?? []).map((id) => sim.MODS[id]?.icon ?? '').join('');
+      return h('div', { class: 'fact-row' },
+        h('div', null, h('b', null, `${title} `), h('span', { class: 'up-stars' }, `★${(b.lv ?? 0) + 1}`), icons && ` ${icons}`, h('span', { class: 'dim' }, ` · [${b.x}, ${b.y}]`)),
+        h('div', { class: 'row' },
+          h('button', { class: 'mini', title: 'Přejít k budově a otevřít inspektor', onclick: () => { closeModal(); G.under = false; G.fly = { x: b.x + (b.w ?? 1) / 2, y: b.y + (b.h ?? 1) / 2, z: 22 }; select(b); } }, '🎯'),
+          up ? h('button', { class: 'mini' + (s.sandbox || s.money >= up ? ' primary' : ''), disabled: !s.sandbox && s.money < up, onclick: () => { if (sim.upgrade(s, b)) { sfx('done'); toast(`${title} → ★${b.lv + 1}`, 'ok'); } redo(); } }, `⬆️ ${fmt(up)}`)
+            : h('span', { class: 'ok' }, 'Max ★5'),
+          ev && h('button', { class: 'mini', disabled: !!evErr, title: evErr ?? `Povýšit na ${ev.name}`, onclick: () => { const r = sim.upgradeModel(s, b, ev.id); if (r.ok) { sfx('done'); toast(`Povýšeno na ${ev.name}`, 'ok'); } else toast(r.err, 'err'); redo(); } }, `🏗️ ${ev.name.split(':')[0]} (${fmt(sim.upgradeModelCost(s, b, ev.id))})`)));
+    });
+    const ores = ORES.filter((o) => o && (o.far ?? 0) <= 250).map((o) => h('button', { onclick: () => {
+      const r = sim.buildMineWithRoad(s, o.id);
+      if (r && !r.err) {
+        sfx('done'); closeModal();
+        const mx = r.x ?? r.b?.x ?? 0, my = r.y ?? r.b?.y ?? 0;
+        G.under = false; G.fly = { x: mx + 1, y: my + 1, z: 22 };
+        if (r.b) select(r.b);
+        toast(`Postaven důl (${o.name}) + silnice do Skladu`, 'ok');
+      } else toast(r?.err ?? 'Důl teď nejde postavit', 'err');
+    } }, `⛏️ ${o.name} + silnice`));
+    const featured = [ROUTES.arduino_uno, ROUTES.power, ROUTES.fab_i4004].filter(Boolean);
+    const ordered = [...new Set([...featured, ...Object.values(ROUTES)])];
+    const cards = ordered.map((r) => {
+      const open = sim.unlocked(s, r.req), ec = econ(r);
+      const outs = r.out ? Object.entries(r.out).map(([it, q]) => `${num(q, 1)}× ${ITEMS[it].name}`) : r.power ? [`${num(r.power)} MWh/dávku`] : r.cat === 'fab' ? [`Wafer: ${ITEMS['wl_' + r.chip]?.name ?? r.chip}`] : [`${ITEMS[r.chip]?.name ?? r.chip}`];
+      const reqInfo = open ? h('span', { class: 'ok' }, '✓ Odemčeno') : h('span', { class: 'dim' }, `Výzkum: ${reqName(r.req)} (odemkne se automaticky, stačí mít ★)`);
+      return h('div', { class: 'card' },
+        h('header', null, h('div', null, h('h3', null, r.name), h('div', { class: 'dim' }, `${ROUTE_CATS[r.cat] ?? 'Suroviny a energie'} · ${r.ops.length} ${r.ops.length === 1 ? 'stroj' : r.ops.length < 5 ? 'stroje' : 'strojů'}`))),
+        kv('Vyrábí', outs.join(', ')),
+        kv('Ekonomika', margin(r)),
+        ec.parts > 0 && kv('Díly na dávku', fmt(ec.parts)),
+        h('div', null, reqInfo),
+        h('div', { class: 'row' },
+          h('button', { class: 'primary', 'data-build-factory': r.id, onclick: () => buildAndFly(r.id) }, '⚡ Postavit továrnu'),
+          h('button', { onclick: () => { rsel = r.id; MODALS.routes(); } }, 'Detail postupu')));
+    });
+    frame('🏭 Továrny a automatizace',
+      h('p', { class: 'lead' }, `Spravuj celou firmu (${machs.length} strojů a dolů) jedním kliknutím nebo rovnou postav hotovou plně propojenou linku.`),
+      h('h4', null, 'Hromadná správa firmy'), bulk,
+      h('h4', null, 'Moje budovy a vylepšení'), h('div', { class: 'fact-list' }, builtRows),
+      h('h4', null, 'Rychlá těžba a silnice do Skladu'), h('div', { class: 'row' }, ores),
+      h('h4', null, 'Kompletní továrny na 1 klik (hala + stroje + dopravníky + nákup dílů)'), h('div', { class: 'cards' }, cards));
+  },
   intro() { // úvod úrovně: o co jde a co je cílem
     const L = sim.levelOf(G.s), i = MISSIONS.indexOf(L);
     frame(L.id === 'free' ? L.name : `Úroveň ${i + 1}: ${L.name}`, h('p', { class: 'lead' }, L.what),
@@ -551,11 +879,27 @@ const MODALS = {
     tsel = RESEARCH.find((r) => r.id === tsel) ? tsel : (RESEARCH.find((r) => !has(r.id) && ready(r)) ?? RESEARCH[0]).id;
     const cur = RESEARCH.find((r) => r.id === tsel), keep = $('win').querySelector('.tree'), sx = keep?.scrollLeft ?? 0, sy = keep?.scrollTop ?? 0;
     const width = X0 + (Math.max(...RESEARCH.map((r) => d(r.id))) + 1) * W, height = top.at(-1) + rows.at(-1) * H + 8;
-    const lines = RESEARCH.flatMap((r) => r.req.map((q) => { const [x1, y1] = xy(q), [x2, y2] = xy(r.id), a = x1 + 142, b = y1 + 20, c = y2 + 20, m = (a + x2) / 2; return `<path d="M${a} ${b} C${m} ${b} ${m} ${c} ${x2} ${c}" stroke="${has(q) ? '#3fe08a' : '#2f3743'}"/>`; }));
-    const svg = h('div'); svg.innerHTML = `<svg width="${width}" height="${height}" fill="none" stroke-width="2">${lines.join('')}</svg>`;
+    const lines = RESEARCH.flatMap((r) => r.req.map((q) => { const [x1, y1] = xy(q), [x2, y2] = xy(r.id), a = x1 + 142, b = y1 + 20, c = y2 + 20, m = (a + x2) / 2, col = has(r.id) ? '#4fdc8f' : has(q) && ready(r) ? '#ff9a2e' : '#2c3847'; return `<path d="M${a} ${b} C${m} ${b} ${m} ${c} ${x2} ${c}" stroke="${col}"/>`; }));
+    const svg = h('div'); svg.innerHTML = `<svg width="${width}" height="${height}" fill="none" stroke-width="2.5">${lines.join('')}</svg>`;
     const unlock = () => { if (sim.research(s, cur.id)) { sfx('done'); toast(`Odemčeno: ${cur.name}`, 'ok'); if (cur.id === 'smt1') { s.guide = GUIDE2; renderQuest(); toast('V dílně u Skladu stojí nová linka. Průvodce ukáže, co s ní.', '', 8000); } renderBuild(); MODALS.research(); } };
-    const act = has(cur.id) ? h('span', { class: 'ok' }, 'ODEMČENO') : !ready(cur) ? h('span', { class: 'dim' }, `Nejdřív: ${cur.req.filter((q) => !has(q)).map(reqName).join(', ')}`)
-      : h('button', { class: 'primary', 'data-unlock': 1, disabled: s.pts < cur.pts, onclick: unlock }, s.pts < cur.pts ? `Stojí ★ ${cur.pts}, máš ★ ${s.pts}` : `Odemknout za ★ ${cur.pts}`);
+    const needNodes = (id, seen = new Set()) => {
+      if (has(id) || seen.has(id)) return [];
+      seen.add(id);
+      const r = RESEARCH.find((x) => x.id === id);
+      return r ? [...r.req.flatMap((q) => needNodes(q, seen)), r] : [];
+    };
+    const chain = needNodes(cur.id), chainPts = chain.reduce((a, r) => a + r.pts, 0);
+    const unlockChain = () => {
+      const hadSmt = has('smt1');
+      if (sim.unlockWithReqs(s, cur.id)) {
+        sfx('done'); toast(`Odemčeno včetně předpokladů: ${cur.name}`, 'ok');
+        if (!hadSmt && has('smt1')) { s.guide = GUIDE2; renderQuest(); toast('V dílně u Skladu stojí nová linka. Průvodce ukáže, co s ní.', '', 8000); }
+        renderBuild(); MODALS.research();
+      } else toast('Chybí body rozvoje ★', 'err');
+    };
+    const act = has(cur.id) ? h('span', { class: 'ok' }, 'ODEMČENO') : !ready(cur)
+      ? h('button', { class: 'primary', 'data-unlock': 1, disabled: !s.sandbox && s.pts < chainPts, onclick: unlockChain }, s.pts < chainPts ? `Odemknout i s předpoklady (★ ${chainPts}, máš ★ ${s.pts})` : `⚡ Odemknout i s předpoklady za ★ ${chainPts}`)
+      : h('button', { class: 'primary', 'data-unlock': 1, disabled: !s.sandbox && s.pts < cur.pts, onclick: unlock }, s.pts < cur.pts ? `Stojí ★ ${cur.pts}, máš ★ ${s.pts}` : `Odemknout za ★ ${cur.pts}`);
     frame('Strom rozvoje', h('div', { class: 'treeinfo' }, h('div', { class: 'pts' }, h('b', null, `★ ${s.sandbox ? '∞' : s.pts}`), h('small', null, 'body rozvoje')), h('div', null, h('h3', null, cur.name), h('p', { class: 'dim' }, cur.what)), act),
       h('div', { class: 'tree' }, h('div', { class: 'canvas', style: `width:${width}px;height:${height}px` }, svg.firstChild,
         LANES.map((n, l) => h('div', { class: 'lane', style: `top:${top[l] - 8}px;height:${rows[l] * H + 16}px` }, n)),
@@ -574,7 +918,8 @@ const MODALS = {
       h('td', null, [...Object.entries(op.in ?? {}).map(([it, q]) => `${num(q, 2)}× ${ITEMS[it].name}`), ...(first ? op.mats.map((id) => MATS[id]?.name).filter(Boolean) : [])].join(', ')), h('td', { class: 'n' }, hours(op.h)), h('td', { class: 'n' }, op.chem ? `${num(op.chem, 3)}× chemie` : op.opex >= 1 ? fmt(op.opex) : '')); });
     const outs = r.out ? Object.entries(r.out).map(([it, q]) => `${num(q, 1)}× ${ITEMS[it].name}`) : r.power ? [`${num(r.power)} MWh elektřiny do zásobníku`] : r.cat === 'fab' ? [`1× ${ITEMS['wl_' + r.chip].name}`] : [`${ITEMS[r.chip].name}: ${num(CHIPS[r.chip].gross / 100, 0)} balení × výtěžnost`];
     frame('Výrobní postupy', h('div', { class: 'split' }, h('nav', { class: 'side' }, side), h('div', { class: 'detail' },
-      h('h3', null, r.name), !sim.unlocked(s, r.req) && h('div', { class: 'warn' }, `Nejdřív odemkni ve Stromu: ${reqName(r.req)}`),
+      h('h3', null, r.name), !sim.unlocked(s, r.req) && h('div', { class: 'warn' }, `Nejdřív odemkni ve Stromu: ${reqName(r.req)} (tlačítko níž to zkusí odemknout samo)`),
+      h('div', { class: 'row' }, h('button', { class: 'primary', 'data-build-factory': r.id, onclick: () => buildAndFly(r.id) }, '⚡ Postavit celou továrnu (+ hala, linka, depa)')),
       kv('Začíná na stroji', KINDS[r.ops[0].kind].name), kv('Vyrobí', outs.join(', ')), kv('Čas na referenčních strojích', hours(r.ops.reduce((a, o) => a + o.h, 0))),
       kv('Díly na dávku za ceny Trhu', fmt(ec.parts)), kv('Spotřební materiál na dávku', fmt(ec.opex)), kv('Tržba za dávku (85 % ceny)', ec.out ? fmt(ec.out) : '—'), kv('Výsledek bez elektřiny', margin(r)),
       pr && [h('h4', null, pr.name), h('p', null, pr.what), pr.fabs?.length && kv('Kde se to dělá', pr.fabs.map((f) => `${f.name} (${f.country})`).join('; ')), pr.sources?.length && h('div', { class: 'srcs' }, pr.sources.slice(0, 5).map((u, i) => link(u, `zdroj ${i + 1}`)))],
@@ -588,7 +933,13 @@ const MODALS = {
     const legend = (items) => h('div', { class: 'legend' }, items.map(([t, c]) => h('span', null, h('i', { style: `background:${c}` }), t)));
     frame('Statistiky',
       h('div', { class: 'specs' }, kv('Peníze', fmt(s.money)), kv('Příjem za den', fmt(s.rateIn)), kv('Výdaje za den', fmt(s.rateOut)),
+        kv('Tarif sítě', `${sim.powerTariff(s.t) > 1 ? 'denní špička (1,25×)' : 'noční (0,625×)'}`),
+        kv('Úvěr (10 % ročně)', fmt(s.loan ?? 0)),
         kv('Vlastní elektřina', s.gen ? `vyrobeno ${num(s.gen, 1)} MWh, v zásobníku ${num(s.mwh, 1)} z ${sim.GRID_MWH} MWh` : 'zatím žádná (Strom: Uhelná teplárna)')),
+      !s.sandbox ? h('div', { class: 'row' },
+        h('button', { onclick: () => { sim.takeLoan(s, 10000); MODALS.stats(); } }, 'Půjčit 10 000 $'),
+        h('button', { onclick: () => { sim.takeLoan(s, 100000); MODALS.stats(); } }, 'Půjčit 100 000 $'),
+        (s.loan ?? 0) > 0 ? h('button', { onclick: () => { sim.repayLoan(s, s.loan); MODALS.stats(); } }, 'Splatit vše') : null) : null,
       h('h4', null, 'Peníze'), chart(hist, [[1, '#ffb52e']], false),
       h('h4', null, 'Příjmy a výdaje za den'), chart(hist, [[2, '#3fe08a'], [3, '#ff4d5e']]), legend([['příjem', '#3fe08a'], ['výdaje', '#ff4d5e']]),
       h('h4', null, 'Výroba za poslední celý den'), day.length ? h('table', { class: 'grid' }, h('tbody', null, day.map(([it, n]) => h('tr', null, h('td', null, icon(it, 20)), h('td', null, ITEMS[it].name), h('td', { class: 'n' }, qty(n, it)), h('td', { class: 'n' }, fmt(n * ITEMS[it].usd))))))
@@ -664,32 +1015,53 @@ const quarryAt = ([, x, y]) => G.s.list.find((b) => b.k === 'miner' && Math.hypo
 const quartzQ = () => quarryAt(STARTERS[0]), coalQ = () => quarryAt(STARTERS[1]);
 const glassSpot = () => [[3, -1], [-6, -1], [-1, 3], [-1, -6]].map(([x, y]) => ({ x, y, w: 3, h: 3 })).find((m) => !sim.canPlace(G.s, 'glass_pot', m.x, m.y)); // volné místo těsně u Skladu
 const GUIDE = [
-  { title: 'Rozhlédni se', t: 'Budova uprostřed je tvůj Sklad: sem se vozí všechno, co vytěžíš, a odtud se to prodává. Levým tlačítkem myši táhneš mapu, kolečkem přibližuješ. Zkus pohledem pohnout.', ok: () => G.moved },
-  { title: 'Otoč pohled', t: 'Táhni pravým tlačítkem myši, nebo za kompas vlevo dole: pohled se otáčí a naklání na kteroukoli stranu. Zkus to.', hl: ['#compass'], ok: () => Math.abs(G.cam.yaw - CAM0.yaw) > 0.3 || Math.abs(G.cam.pitch - CAM0.pitch) > 0.2 },
-  { title: 'Těž uhlí', t: 'Začneš uhlím: tuna stojí kolem 200 $ a vyplatí se i ruční těžba. Černé ložisko je pod šipkou. V záložce Suroviny vyber Ruční lom; u kurzoru uvidíš, co a jak rychle bude těžit. Klikni s ním na ložisko.', hl: ['[data-id=quarry_hand]', '#cats [data-c="Suroviny"]'], mark: () => ({ x: -28, y: 18, w: 2, h: 2 }), ok: () => !!coalQ() },
-  { title: 'Cesta do Skladu', t: 'Uhlí musí do Skladu. V záložce Doprava vyber Polní cestu, klikni na lom a pak na Sklad. Cesta mezi nimi se postaví sama a auta po ní začnou jezdit sama.', hl: ['[data-id=road1]', '#cats [data-c="Doprava"]'], mark: () => (G.plan ? hqB() : coalQ()), ok: (s) => !!sim.pathOf(s, coalQ(), hqB()) },
-  { title: 'Uhlí a hlušina', t: 'Dva lidé vykopou za hodinu práce asi půl tuny. S každou tunou uhlí vyjdou tři tuny hlušiny; auta vozí obojí do Skladu a obojí se tam prodá. Nad lomem vidíš zásobu ložiska a hromadu. Zrychli čas tlačítkem 10× a počkej, až do Skladu dojede 5 t uhlí.', hl: ['#speed [data-v="10"]'], mark: coalQ, ok: (s) => (s.got.coal ?? 0) >= 5 },
-  { title: 'Druhá směna', t: 'Směna pracuje 8 hodin denně, zbytek dne lom stojí. Klikni na lom a tlačítkem + přidej dva lidi: druhá směna zdvojnásobí těžbu.', hl: ['#panel [data-staff="1"]'], mark: coalQ, ok: () => { const q = coalQ(); return !!q && q.staff > MODELS[q.model].crew; } },
-  { title: 'Body rozvoje', t: 'Za tržby dostáváš body rozvoje: zelená hvězdička nahoře. Až budeš mít dva, otevři Strom (klávesa V), klikni na Minirypadlo a odemkni ho. Za směnu vytěží sedmnáctkrát víc než dva lidé.', hl: ['#win [data-unlock]', '#win [data-node=mine1]', '#nav [data-m=research]'], ok: (s) => s.research.length > 3 },
-  { title: 'Umíš to hlavní', t: 'Těžit, vést cesty, obsazovat směny a odemykat. Co dál: našetři na Minirypadlo (dá se položit přímo přes ruční lom). Bílé ložisko je křemen pro Sklářskou dílnu. Další cíle uvidíš tady.', last: true },
-  // druhá část: spustí se po odemknutí Dílny elektroniky
-  { p2: true, title: 'Linka na Arduino', t: 'Kolem Skladu vyrostla dílna a u Skladu stojí v řadě pět strojů: linka na Arduino. Klikni na první z nich, tiskař pasty. Ukazuje na něj šipka.', mark: () => line(0), ok: () => !!G.sel && G.sel === line(0) },
-  { title: 'Zvol výrobek', t: 'Vpravo se otevřel panel stroje. V poli „Vyrábí“ zvol Arduino Uno R3.', hl: ['#panel select'], mark: () => line(0), ok: () => line(0)?.prod === 'arduino_uno' },
-  { title: 'Dokupování dílů', t: 'Linka jede: deska putuje strojem po stroji a díly si stroje berou ze Skladu, kterého se dotýkají. Aby díly nedošly, klikni v panelu na „Dokupovat díly trasy samo“.', hl: ['#panel [data-auto]'], mark: () => line(0), ok: (s) => s.autoBuy.pcb_uno > 0 },
-  { title: 'První Arduino', t: 'Zrychli čas tlačítkem 10× nahoře a počkej na první balení Arduina. Hotové se samo prodá.', hl: ['#speed [data-v="10"]'], ok: (s) => s.made.arduino_uno >= 1 },
-  { title: 'Rychlejší stroj', t: 'Nejpomalejší je druhý stroj, osazovací automat. Vyměň ho za rychlejší: stiskni X a klikni na něj (zbourání vrací plnou cenu). Pak v záložce Osazování vyber NeoDen YY1 a polož ho na stejné místo.', hl: ['[data-id=pnp_yy1]', '#cats [data-c="Osazování"]'], mark: () => { const l = G.s.line; return l && { x: l[0] + l[2], y: l[1] + l[3], w: 1, h: 1 }; }, ok: () => line(1)?.model === 'pnp_yy1' },
-  { title: 'Výrobu umíš taky', t: 'Další obory odemyká Strom, další cíle uvidíš tady.', last: true },
+  { title: 'Rozhlédni se a otoč pohled', t: 'Uprostřed stojí tvůj Sklad. Levým tlačítkem myši posouváš mapu, pravým otáčíš pohled a kolečkem přibližuješ. Zkus pohledem pohnout, nebo klikni na „Udělat za mě“.', hl: ['#compass', '[data-guide-auto]'],
+    ok: () => G.moved || Math.abs(G.cam.yaw - CAM0.yaw) > 0.3 || Math.abs(G.cam.pitch - CAM0.pitch) > 0.2,
+    auto: () => { G.moved = true; G.fly = { x: -10, y: 8, z: 24, yaw: CAM0.yaw + 0.5, pitch: 0.85 }; } },
+  { title: 'Postav první těžbu uhlí', t: 'V záložce Suroviny vyber Ruční lom a klikni na černé ložisko pod šipkou. Nebo to nechej postavit jedním klikem.', hl: ['[data-id=quarry_hand]', '#cats [data-c="Suroviny"]', '[data-guide-auto]'], mark: () => ({ x: -28, y: 18, w: 2, h: 2 }),
+    ok: () => !!coalQ(),
+    auto: (s) => { const r = sim.place(s, 'quarry_hand', -28, 18); if (r.err) sim.buildMineWithRoad(s, 'coal'); const q = coalQ() ?? r.b; if (q) { G.fly = { x: q.x + 1, y: q.y + 1, z: 20 }; select(q); } } },
+  { title: 'Spoj lom silnicí se Skladem', t: 'V záložce Doprava vyber Polní cestu, klikni na lom a pak na Sklad (silnici propojíme za tebe i jedním klikem). Auta se koupí a začnou jezdit sama.', hl: ['[data-id=road1]', '#cats [data-c="Doprava"]', '[data-guide-auto]'], mark: () => (G.plan ? hqB() : coalQ()),
+    ok: (s) => !!sim.pathOf(s, coalQ(), hqB()),
+    auto: (s) => { const q = coalQ() ?? sim.buildMineWithRoad(s, 'coal').b; if (q) { const r = sim.autoConnectRoad(s, q, 'road1'); if (r?.err) toast(r.err, 'err'); else select(q); } } },
+  { title: 'První uhlí ve Skladu', t: 'Zrychli čas tlačítkem 10× nahoře a počkej, až auta dovezou prvních 5 tun uhlí do Skladu.', hl: ['#speed [data-v="10"]', '[data-guide-auto]'], mark: coalQ,
+    ok: (s) => (s.got.coal ?? 0) >= 5,
+    auto: (s) => { setSpeed(10); for (let i = 0; i < 500 && (s.got.coal ?? 0) < 5; i++) sim.tick(s, 0.5); if ((s.got.coal ?? 0) < 5) s.got.coal = 5; toast('Čas běží 10× a první uhlí je ve Skladu!', 'ok'); } },
+  { title: 'Najmi plné směny (24 h)', t: 'Jedna směna pracuje jen 8 h denně. Klikni na lom a tlačítkem „3× (24h)“ (nebo +) najmi plné směny pro nepřetržitý provoz.', hl: ['#panel [data-staff-max]', '#panel [data-staff="1"]', '[data-guide-auto]'], mark: coalQ,
+    ok: () => { const q = coalQ(); return !!q && sim.staffed(q) > MODELS[q.model].crew; },
+    auto: (s) => { const q = coalQ(); if (q) { sim.setStaff(s, q, 3 * MODELS[q.model].crew); select(q); toast('Najaty plné 3 směny!', 'ok'); } } },
+  { title: 'Odemkni Minirypadlo ve Stromu', t: 'Body rozvoje ★ se utrácejí ve Stromu (klávesa V). Průvodce ti zajistil první ★ 2: otevři Strom a odemkni Minirypadlo (těží 17× rychleji).', hl: ['#win [data-unlock]', '#win [data-node=mine1]', '#nav [data-m=research]', '[data-guide-auto]'],
+    enter: (s) => { if (s.pts < 2) { s.pts = 2; toast('Bonus průvodce: +★ 2 body rozvoje na první výzkum!', 'ok'); } },
+    ok: (s) => s.research.length > 3,
+    auto: (s) => { if (sim.unlockWithReqs(s, 'mine1')) { renderBuild(); toast('Odemčeno: Minirypadlo!', 'ok'); } else toast('Chybí body rozvoje ★', 'err'); } },
+  { title: 'Základy máš v kapse!', t: 'Umíš těžit, propojovat silnice, najímat lidi i odemykat technologie. Vylepšovat a stavět celé továrny na 1 klik můžeš i v okně Továrny (klávesa T).', last: true },
+  // druhá část: spustí se po odemknutí Dílny elektroniky (smt1)
+  { p2: true, title: 'Linka na Arduino v dílně', t: 'U Skladu stojí hotová linka. Klikni na první stroj (tiskař pasty), zvol Arduino Uno R3 a zapni „Dokupovat díly trasy samo“. Stroj si vezme vše ze Skladu.', mark: () => line(0), hl: ['#panel select', '#panel [data-auto]', '[data-guide-auto]'],
+    enter: (s) => { if (s.money < 15000) { s.money += 15000; toast('Dotace průvodce pro dílnu: +15 000 $', 'ok'); } },
+    ok: (s) => line(0)?.prod === 'arduino_uno' && s.autoBuy.pcb_uno > 0,
+    auto: (s) => { const m0 = line(0); if (m0) { m0.prod = 'arduino_uno'; for (const op of ROUTES.arduino_uno.ops) for (const it in op.in ?? {}) if (sim.canBuy(s, it)) s.autoBuy[it] = Math.max(s.autoBuy[it] ?? 0, Math.ceil(op.in[it] * 2)); sim.hireAllStaff(s); select(m0); toast('Linka nastavena na Arduino Uno s automatickým nákupem dílů!', 'ok'); } else { sim.buildFactory(s, 'arduino_uno'); } } },
+  { title: 'První vyrobené Arduino', t: 'Zrychli čas tlačítkem 10× nahoře a vyčkej na první hotové Arduino Uno — rovnou se samo prodá na Trhu.', hl: ['#speed [data-v="10"]', '[data-guide-auto]'],
+    ok: (s) => (s.made.arduino_uno ?? 0) >= 1,
+    auto: (s) => { setSpeed(10); sim.hireAllStaff(s); for (let i = 0; i < 600 && (s.made.arduino_uno ?? 0) < 1; i++) sim.tick(s, 0.5); if ((s.made.arduino_uno ?? 0) < 1) { const r = ROUTES.arduino_uno; for (const op of r.ops) for (const [it, q] of Object.entries(op.in ?? {})) if (sim.canBuy(s, it) && (s.inv[it] ?? 0) < q * 2) sim.buy(s, it, Math.ceil(q * 2)); for (let i = 0; i < 600 && (s.made.arduino_uno ?? 0) < 1; i++) sim.tick(s, 0.5); } toast('První Arduino Uno bylo vyrobeno!', 'ok'); } },
+  { title: 'Továrny na 1 klik a výhra!', t: 'Otevři okno Továrny (klávesa T) nebo klikni na Sklad — postavíš tam libovolnou továrnu na 1 klik, hromadně najmeš směny a vylepšíš celou firmu.', hl: ['#nav [data-m=factories]', '[data-guide-auto]'],
+    auto: () => openModal('factories'), last: true },
 ];
 const GUIDE2 = GUIDE.findIndex((g) => g.p2); // kde začíná druhá část
+let lastGuideKey = null;
 function renderQuest() { // karta cíle vlevo nahoře: krok průvodce, cíle úrovně, nebo úkol volné hry
   const s = G.s, g = GUIDE[s.guide], q = QUESTS[s.quest], L = sim.levelOf(s), a = s.guide >= GUIDE2 ? GUIDE2 : 0, n = (a ? GUIDE.length : GUIDE2) - a;
-  const next = () => { s.guide = g.last ? null : s.guide + 1; sfx('done'); renderQuest(); };
+  const gk = g ? `${s.lvl}:${s.guide}` : null;
+  if (g?.enter && gk !== lastGuideKey) { lastGuideKey = gk; g.enter(s); }
+  else if (!g) lastGuideKey = null;
+  const next = () => { const wasLast = g.last; s.guide = wasLast ? null : s.guide + 1; sfx('done'); renderQuest(); if (wasLast && s.won) openModal('win', true); };
   const head = (step, title, part) => [h('div', { class: 'qhead' }, h('span', { class: 'qstep' }, step), h('h3', null, title)), h('div', { class: 'qbar' }, h('i', { style: `width:${part * 100}%` }))];
   const goals = L.goals.length ? [h('h4', null, s.won ? 'Cíle úrovně: splněno' : 'Cíle úrovně'), goalList(L, s)] : [];
   goalSig = L.goals.map((x) => +!!x[1](s)).join('');
   if (g) $('quest').replaceChildren(...head(`Krok ${s.guide - a + 1} z ${n}`, g.title, (s.guide - a + 1) / n), h('p', null, g.t), h('div', { class: 'row' },
-    g.mark && h('button', { class: 'primary', onclick: () => { const m = g.mark(); if (m) G.fly = { x: m.x + (m.w ?? 1) / 2, y: m.y + (m.h ?? 1) / 2, z: 22 }; } }, 'Ukaž mi kde'), g.last && h('button', { class: 'primary', onclick: next }, 'Rozumím'),
-    !g.last && h('button', { class: 'link', onclick: () => { s.guide = null; renderQuest(); } }, 'Přeskočit průvodce')), ...goals);
+    g.auto && h('button', { 'data-guide-auto': '1', onclick: () => { g.auto(s); if (g.last) next(); else { tickGuide(s); renderQuest(); renderBuild(); } } }, '⚡ Udělat za mě'),
+    g.mark && h('button', { class: 'primary', onclick: () => { const m = g.mark(); if (m) G.fly = { x: m.x + (m.w ?? 1) / 2, y: m.y + (m.h ?? 1) / 2, z: 22 }; } }, 'Ukaž mi kde'),
+    g.last && h('button', { class: 'primary', onclick: next }, 'Rozumím'),
+    !g.last && h('button', { class: 'link', onclick: () => { s.guide = null; renderQuest(); if (s.won) openModal('win', true); } }, 'Přeskočit průvodce')), ...goals);
   else if (goals.length) $('quest').replaceChildren(...head(`Úroveň ${MISSIONS.indexOf(L) + 1}`, L.name, goalSig.split('1').length - 1 ? (goalSig.split('1').length - 1) / L.goals.length : 0), h('p', null, s.won ? 'Úroveň je splněná. Můžeš hrát dál, nebo v Menu přejít na další.' : L.what), ...goals);
   else $('quest').replaceChildren(...(q ? [...head(`Úkol ${s.quest + 1} z ${QUESTS.length}`, 'Další cíl', s.quest / QUESTS.length), h('p', null, q[0]), h('div', { class: 'reward' }, `Odměna ${fmt(q[2])} a ★ ${q[3]}`)] : [...head('Úkoly', 'Všechno splněno', 1), h('p', null, 'Továrna je tvoje.')]));
   const d = s.deal; // zakázka odběratele: co, kolik, kam a do kdy
@@ -708,7 +1080,7 @@ function tickGuide(s) { // zvýrazní, kam kliknout, a po splnění kroku jde d�
 }
 export function initUI(a) {
   api = a;
-  $('nav').append(h('button', { title: 'Zpět do dílny', onclick: home }, 'Dílna', h('kbd', null, 'H')), ...[['research', 'Strom', 'V'], ['market', 'Trh', 'M'], ['chips', 'Čipy', 'C'], ['routes', 'Postupy', 'P'], ['stats', 'Statistiky', 'I'], ['menu', 'Menu', 'Esc']].map(([id, t, k]) => h('button', { 'data-m': id, onclick: () => openModal(id) }, t, h('kbd', null, k))));
+  $('nav').append(h('button', { title: 'Zpět do dílny', onclick: home }, 'Dílna', h('kbd', null, 'H')), ...[['research', 'Strom', 'V'], ['factories', 'Továrny', 'T'], ['market', 'Trh', 'M'], ['chips', 'Čipy', 'C'], ['routes', 'Postupy', 'P'], ['stats', 'Statistiky', 'I'], ['menu', 'Menu', 'Esc']].map(([id, t, k]) => h('button', { 'data-m': id, onclick: () => openModal(id) }, t, h('kbd', null, k))));
   $('pts').addEventListener('click', () => openModal('research'));
   $('speed').append(...[0, 1, 3, 10, 30].map((v) => h('button', { 'data-v': v, title: v ? `Rychlost ${v}×` : 'Pauza (mezerník)', onclick: () => setSpeed(v) }, v ? v + '×' : 'Ⅱ')));
   // kompas: táhnutím za něj se pohled otáčí a naklání stejně jako pravým tlačítkem v mapě; střelka ukazuje sever
@@ -724,7 +1096,7 @@ export function initUI(a) {
   bindInput();
   resetUI();
 }
-export function resetUI() { stockSig = null; G.title = false; delete document.body.dataset.title; $('title').hidden = true; select(null); G.tool = null; modeUI(); $('viewpad').querySelector('[data-under]')?.classList.remove('on'); closeModal(); renderBuild(); renderQuest(); setSpeed(G.speed); }
+export function resetUI() { lastGuideKey = null; stockSig = null; G.title = false; delete document.body.dataset.title; $('title').hidden = true; select(null); G.tool = null; modeUI(); $('viewpad').querySelector('[data-under]')?.classList.remove('on'); closeModal(); renderBuild(); renderQuest(); setSpeed(G.speed); }
 export function tickUI(now, dt) {
   if (G.title) { G.cam.yaw += dt * 0.04; return; } // za hlavním menu se svět jen pomalu otáčí
   const s = G.s, pan = (700 / G.cam.z) * dt, sn = Math.sin(G.cam.yaw), cs = Math.cos(G.cam.yaw);
@@ -749,7 +1121,7 @@ export function tickUI(now, dt) {
   $('pts').title = `Body rozvoje: utrácejí se ve Stromu (V). Další bod za tržby ${fmt(sim.needOf(s.lvl) - s.xp)}.`;
   $('clock').textContent = `Den ${Math.floor(s.t / sim.DAY) + 1} · ${String(Math.floor((s.t % sim.DAY) / HOUR)).padStart(2, '0')}:00`;
   for (const fx of s._fx.splice(0)) {
-    if (fx.win) { localStorage.setItem(DONE, JSON.stringify([...doneSet().add(fx.win)])); sfx('done'); renderQuest(); openModal('win', true); }
+    if (fx.win) { localStorage.setItem(DONE, JSON.stringify([...doneSet().add(fx.win)])); sfx('done'); renderQuest(); if (s.guide == null) openModal('win', true); else toast('Cíle úrovně splněny! Dokonči průvodce a otevře se shrnutí.', 'ok', 7000); }
     else if (fx.quest != null) { toast(`Úkol splněn: +${fmt(fx.usd)} a ★ ${fx.pts}`, 'ok', 7000); sfx('done'); renderQuest(); }
     else if (fx.lvl != null) { toast(`Nový bod rozvoje. Máš ★ ${s.pts}: utrať je ve Stromu (klávesa V).`, 'ok', 7000); sfx('done'); }
     else if (fx.deal) { toast(fx.deal === 'new' ? `Nová zakázka od odběratele: ${s.deal?.name ?? ''}. Podrobnosti vlevo nahoře.` : fx.deal === 'done' ? `Zakázka splněna: prémie ${fmt(fx.usd)} a ★ 1` : 'Zakázka propadla: nestihlo se to. Další přijde zítra.', fx.deal === 'fail' ? 'err' : 'ok', 7000); sfx(fx.deal === 'fail' ? 'error' : 'done'); renderQuest(); }
@@ -767,7 +1139,7 @@ export function tickUI(now, dt) {
   if (hv) {
     const o = sim.oreAt(s, hv.x, hv.y), b = sim.at(s, hv.x, hv.y), w = b?.it && ITEMS[b.it];
     const rd = s._road.get(sim.key(hv.x, hv.y));
-    $('coords').textContent = `${hv.x}, ${hv.y} m` + (b?.model ? ` · ${MODELS[b.model].name}` : b?.k === 'npc' ? ` · ${b.name}` : rd ? ` · ${sim.defOf('road' + rd).name}` : w ? ` · ${w.wip ? `čeká na: ${KINDS[ROUTES[w.route].ops[w.step].kind].name}` : w.name}` : o ? ` · ložisko: ${ORES[o].name}, zbývá ${num(sim.left(s, hv.x, hv.y))} t/m²` : sim.isHall(s, hv.x, hv.y) && !sim.isFloor(s, hv.x, hv.y) ? ' · hala' : sim.isFloor(s, hv.x, hv.y) ? ' · čistý prostor' : '');
+    $('coords').textContent = `${hv.x}, ${hv.y} m` + (b?.model ? ` · ${MODELS[b.model].name}` : b?.k === 'npc' ? ` · ${b.name}` : rd ? ` · ${sim.defOf('road' + rd).name}` : w ? ` · ${w.wip ? `čeká na: ${KINDS[ROUTES[w.route].ops[w.step].kind].name}` : w.name}` : o ? ` · ložisko: ${ORES[o].name}, zbývá ${num(sim.left(s, hv.x, hv.y))} t/m²` : sim.isPit(s, hv.x, hv.y) ? ' · jáma po těžbě (rekultivace nástrojem Bourat)' : sim.isHall(s, hv.x, hv.y) && !sim.isFloor(s, hv.x, hv.y) ? ' · hala' : sim.isFloor(s, hv.x, hv.y) ? ' · čistý prostor' : '');
   }
   if (now - lastMini > 1000) { lastMini = now; api.minimap(); }
 }

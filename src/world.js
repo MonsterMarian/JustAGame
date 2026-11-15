@@ -5,16 +5,18 @@ export const LEVELS = 6, LEVEL_M = 50; // pod povrchem je šest pater po 50 m
 // Ložiska: skutečné nerosty. scale = velikost skvrn (m), thr = vzácnost, far = od kolika metrů od Centrály se objevují na povrchu,
 // deep = ve kterých patrech pod zemí se nerost vyskytuje (uhlí a sůl mělko, cín a zlato hluboko).
 // waste = kolik tun hlušiny se vykope na tunu nerostu (skrývkový poměr; odhad bez zdroje).
+// speed = relativní rychlost těžby podle tvrdosti horniny (1.0 = běžná skála dle normy ILO; uhlí/sůl měkké, křemen/zlato tvrdé).
+// royalty = těžební poplatek státu z hodnoty vytěžené suroviny (uhlí USA 12,5 % povrch / 8 % hlubinně; zlato 5 %, měď 4 %, ostatní 2,5 %).
 export const ORES = [
   null,
-  { id: 'quartz', name: 'křemen', col: '#e9e4d8', scale: 46, thr: 0.79, far: 0, waste: 0.5 },
-  { id: 'coal', name: 'černé uhlí', col: '#23262b', scale: 52, thr: 0.795, far: 0, deep: [1, 4], waste: 3 },
-  { id: 'ore_cu', name: 'chalkopyrit (měď)', col: '#c9783b', scale: 40, thr: 0.805, far: 150, deep: [2, 6], waste: 2 },
-  { id: 'bauxite', name: 'bauxit (hliník)', col: '#b5533a', scale: 44, thr: 0.81, far: 250, waste: 1 },
-  { id: 'halite', name: 'kamenná sůl', col: '#f3c9d2', scale: 38, thr: 0.815, far: 200, deep: [1, 3], waste: 0.2 },
-  { id: 'fluorspar', name: 'kazivec (fluorit)', col: '#9a6fd6', scale: 34, thr: 0.82, far: 400, deep: [2, 5], waste: 2 },
-  { id: 'ore_sn', name: 'kasiterit (cín)', col: '#8a8f98', scale: 32, thr: 0.825, far: 500, deep: [3, 6], waste: 3 },
-  { id: 'ore_au', name: 'zlatonosná ruda', col: '#f0c040', scale: 28, thr: 0.835, far: 700, deep: [4, 6], waste: 4 },
+  { id: 'quartz', name: 'křemen', col: '#e9e4d8', scale: 46, thr: 0.79, far: 0, waste: 0.5, speed: 0.8, royalty: 0.025 },
+  { id: 'coal', name: 'černé uhlí', col: '#23262b', scale: 52, thr: 0.795, far: 0, deep: [1, 4], waste: 3, speed: 1.6, royalty: 0.125 },
+  { id: 'ore_cu', name: 'chalkopyrit (měď)', col: '#c9783b', scale: 40, thr: 0.805, far: 150, deep: [2, 6], waste: 2, speed: 1.0, royalty: 0.04 },
+  { id: 'bauxite', name: 'bauxit (hliník)', col: '#b5533a', scale: 44, thr: 0.81, far: 250, waste: 1, speed: 1.6, royalty: 0.025 },
+  { id: 'halite', name: 'kamenná sůl', col: '#f3c9d2', scale: 38, thr: 0.815, far: 200, deep: [1, 3], waste: 0.2, speed: 1.8, royalty: 0.025 },
+  { id: 'fluorspar', name: 'kazivec (fluorit)', col: '#9a6fd6', scale: 34, thr: 0.82, far: 400, deep: [2, 5], waste: 2, speed: 1.0, royalty: 0.025 },
+  { id: 'ore_sn', name: 'kasiterit (cín)', col: '#8a8f98', scale: 32, thr: 0.825, far: 500, deep: [3, 6], waste: 3, speed: 0.85, royalty: 0.025 },
+  { id: 'ore_au', name: 'zlatonosná ruda', col: '#f0c040', scale: 28, thr: 0.835, far: 700, deep: [4, 6], waste: 4, speed: 0.75, royalty: 0.05 },
 ];
 // Dvě ložiska poblíž startu, aby šla těžba hned: [index nerostu, x, y, poloměr]
 export const STARTERS = [[1, 23, -16, 7], [2, -27, 19, 7]];

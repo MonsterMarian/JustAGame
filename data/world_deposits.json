@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Mostecká uhelná pánev",
+    "lat": 50.518,
+    "lon": 13.642,
+    "x": -51,
+    "y": -4,
+    "ore": "coal",
+    "ore_index": 2,
+    "radius": 14,
+    "reserves_t": 850000000
+  },
+  {
+    "name": "Sokolovská uhelná pánev",
+    "lat": 50.183,
+    "lon": 12.645,
+    "x": -191,
+    "y": 70,
+    "ore": "coal",
+    "ore_index": 2,
+    "radius": 10,
+    "reserves_t": 320000000
+  },
+  {
+    "name": "Cínovec (Zinnwald) Li-Sn ložisko",
+    "lat": 50.732,
+    "lon": 13.766,
+    "x": -33,
+    "y": -52,
+    "ore": "ore_sn",
+    "ore_index": 7,
+    "radius": 8,
+    "reserves_t": 120000000
+  },
+  {
+    "name": "Střeleč (Český ráj - sklářský křemen)",
+    "lat": 50.505,
+    "lon": 15.201,
+    "x": 170,
+    "y": -1,
+    "ore": "quartz",
+    "ore_index": 1,
+    "radius": 12,
+    "reserves_t": 450000000
+  }
+]
