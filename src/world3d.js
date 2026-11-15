@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildMachine, MACHINE_MODELS } from '../data/hw/machineModels.js';
-import { CHUNK, ORES, LEVEL_M, STARTERS } from './world.js';
+import { CHUNK, ORES, LEVEL_M, STARTERS, WORLD_DEPOSITS } from './world.js';
 import { drawChunk } from './render.js';
 import { MODELS, ITEMS, CARS, KINDS } from '../data/catalog.js';
 import { ROUTES } from '../data/routes.js';
@@ -21,7 +21,7 @@ const SKY_LOW = 0xe4f1fb, UNDER_BG = new THREE.Color(0x241d17), DECO = {};
 const Q4 = new THREE.Quaternion(), P3 = new THREE.Vector3(), S3 = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), V3 = new THREE.Vector3();
 const HH = (x, y) => G.s._world.height(x, y); // výška terénu v metrech
 let renderer, scene, camera, sun, cur = null, rev = -1, grev = -1, W = 0, H = 0, belts = [], pitAt = 0, ugAt = 0, ty = 0, wasUnder = false;
-const terrain = new THREE.Group(), things = new THREE.Group(), fx = new THREE.Group(), under = new THREE.Group(), cars = new THREE.Group(), signs = new THREE.Group();
+const terrain = new THREE.Group(), things = new THREE.Group(), fx = new THREE.Group(), under = new THREE.Group(), cars = new THREE.Group(), signs = new THREE.Group(), depositPins = new THREE.Group();
 const chunks = new Map(), objs = new Map(), protos = new Map(), cols = new Map(), pits = new Set(), carObjs = new Map(), carGeo = new Map();
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3(), M4 = new THREE.Matrix4();
 
@@ -494,6 +494,130 @@ function label(text, col = '#ff9a2e') { // plovoucí odznak nad budovou s barevn
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false })); sp.scale.set((3 * w) / 256, 0.85, 1); sp.userData.base = [(3 * w) / 256, 0.85];
   return sp;
 }
+
+function makeDepositBadge(d) {
+  const c = document.createElement('canvas'), g = c.getContext('2d');
+  c.width = 380; c.height = 118;
+  const isAct = d.status === 'active';
+  const tagCol = isAct ? '#ffb834' : '#00f0aa';
+  const tagBg = isAct ? 'rgba(255,184,52,0.2)' : 'rgba(0,240,170,0.2)';
+  const borderCol = isAct ? 'rgba(255,184,52,0.85)' : 'rgba(0,240,170,0.85)';
+
+  // Podklad rámečku
+  g.save();
+  g.fillStyle = 'rgba(10, 16, 24, 0.94)';
+  g.strokeStyle = borderCol;
+  g.lineWidth = 2.5;
+  g.beginPath();
+  g.roundRect(4, 4, c.width - 8, c.height - 20, 14);
+  g.fill();
+  g.stroke();
+
+  // Šipka dolů
+  g.beginPath();
+  g.moveTo(c.width / 2 - 12, c.height - 18);
+  g.lineTo(c.width / 2, c.height - 4);
+  g.lineTo(c.width / 2 + 12, c.height - 18);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  g.restore();
+
+  // Stavový odznak
+  g.save();
+  g.fillStyle = tagBg;
+  g.beginPath();
+  g.roundRect(14, 12, 145, 24, 6);
+  g.fill();
+  g.fillStyle = tagCol;
+  g.font = '700 13px Bahnschrift, "Segoe UI", sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(isAct ? '● AKTIVNÍ DŮL' : '✦ VOLNÉ LOŽISKO', 86, 24);
+
+  // Region badge vpravo
+  g.fillStyle = 'rgba(255,255,255,0.12)';
+  g.beginPath();
+  g.roundRect(c.width - 150, 12, 136, 24, 6);
+  g.fill();
+  g.fillStyle = '#94a3b8';
+  g.fillText(d.region || 'Svět', c.width - 82, 24);
+
+  // Název dolu / ložiska
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 20px Bahnschrift, "Segoe UI", sans-serif';
+  g.textAlign = 'left';
+  g.textBaseline = 'alphabetic';
+  const name = d.name.length > 28 ? d.name.slice(0, 26) + '…' : d.name;
+  g.fillText(name, 18, 66);
+
+  // Odhad zásob a surovina
+  const oreCol = ORES[d.ore_index]?.col || '#cbd5e1';
+  g.fillStyle = oreCol;
+  g.font = '600 15px Bahnschrift, "Segoe UI", sans-serif';
+  const oreName = ORES[d.ore_index]?.name || d.ore;
+  g.fillText(`${oreName.toUpperCase()} · Odhad: ${d.reserves_est || (d.reserves_t ? (d.reserves_t / 1e6).toFixed(1) + ' Mt' : '?')}`, 18, 92);
+  g.restore();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.scale.set((4.2 * c.width) / 256, (4.2 * c.height) / 256, 1);
+  sp.userData.base = [(4.2 * c.width) / 256, (4.2 * c.height) / 256];
+  return sp;
+}
+
+function makeDepositPin(d) {
+  const g = new THREE.Group();
+  const oreCol = colorOf(ORES[d.ore_index]?.col || '#ffffff');
+  const isAct = d.status === 'active';
+
+  // Svislý světelný maják / sloup
+  const poleGeo = new THREE.CylinderGeometry(0.35, 0.12, 24, 8);
+  const poleMat = lam({
+    color: oreCol,
+    emissive: oreCol,
+    emissiveIntensity: isAct ? 0.4 : 0.65,
+    transparent: true,
+    opacity: 0.85
+  });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.y = 12;
+
+  // Diamantový maják nahoře
+  const gemGeo = new THREE.OctahedronGeometry(2.0, 0);
+  const gemMat = lam({
+    color: isAct ? 0xffc030 : 0x00f0aa,
+    emissive: oreCol,
+    emissiveIntensity: 0.75
+  });
+  const gem = new THREE.Mesh(gemGeo, gemMat);
+  gem.position.y = 24;
+
+  // Billboard odznak
+  const badge = makeDepositBadge(d);
+  badge.position.y = 30;
+
+  g.add(pole, gem, badge);
+  g.position.set(d.x, 0, d.y);
+  g.userData = { dep: d, x: d.x, y: d.y, gem, badge };
+  return g;
+}
+
+function syncDepositPins(s) {
+  if (depositPins.children.length === 0 && Array.isArray(WORLD_DEPOSITS)) {
+    for (const d of WORLD_DEPOSITS) {
+      const pin = makeDepositPin(d);
+      depositPins.add(pin);
+    }
+  }
+  if (s) {
+    for (const pin of depositPins.children) {
+      const d = pin.userData.dep;
+      pin.position.y = s._world.height(d.x, d.y);
+    }
+  }
+}
 // ---------------------------------------------------------------- příroda a ložiska: stromy, balvany a kusy nerostu stojí na dlaždicích jako instance v každém bloku terénu
 function decoGeo() {
   const tree = new THREE.Group();
@@ -695,6 +819,11 @@ function syncChunks(s) {
     const m = new THREE.Mesh(pitGeometry(s, cx, cy) ?? GEO.chunk, lam({ map: tex })); m.position.set((cx + 0.5) * CHUNK, 0, (cy + 0.5) * CHUNK); m.receiveShadow = true; m.castShadow = m.geometry !== GEO.chunk; m.userData = { cx, cy };
     terrain.add(m); chunks.set(k, m); decorate(s, m);
   }
+  const cullDistSq = (R + CHUNK * 1.2) ** 2;
+  for (const [, m] of chunks) {
+    const cd2 = (m.position.x - c.x) ** 2 + (m.position.z - c.y) ** 2;
+    m.visible = cd2 <= cullDistSq;
+  }
   if (chunks.size > 700) for (const [k, m] of chunks) if (m.userData.cx < x0 - 2 || m.userData.cx > x1 + 2 || m.userData.cy < y0 - 2 || m.userData.cy > y1 + 2) { terrain.remove(m); for (const d of m.children) d.dispose(); m.material.map.dispose(); m.material.dispose(); if (m.geometry !== GEO.chunk) m.geometry.dispose(); chunks.delete(k); }
   if (s._pit.size && G.time - pitAt > 0.4) { // jámy se prohlubují průběžně, ale geometrie se přepočítá nejvýš dvakrát za sekundu
     pitAt = G.time;
@@ -756,7 +885,7 @@ export function init3d(canvas) {
   mark.children[0].renderOrder = mark.children[1].renderOrder = 9;
   reach = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([...Array(64)].map((_, i) => new THREE.Vector3(Math.cos(i * 0.0982), 0.15, Math.sin(i * 0.0982)))), new THREE.LineBasicMaterial({ color: 0xffb52e }));
   fx.add(ghost, ghostArrow, rectBox, selBox, hotBox, mark, reach);
-  scene.add(new THREE.HemisphereLight(0xd8ecff, 0x5c4d38, 1.35), sun, sun.target, base, terrain, floorMesh, ...wallMesh, roofMesh, things, cars, signs, fx, under);
+  scene.add(new THREE.HemisphereLight(0xd8ecff, 0x5c4d38, 1.35), sun, sun.target, base, terrain, floorMesh, ...wallMesh, roofMesh, things, cars, signs, fx, under, depositPins);
 }
 function reset(s) { // nová nebo načtená hra: zahodit vše, co patřilo té minulé
   for (const m of chunks.values()) { terrain.remove(m); for (const d of m.children) d.dispose(); m.material.map.dispose(); m.material.dispose(); if (m.geometry !== GEO.chunk) m.geometry.dispose(); }
@@ -765,6 +894,7 @@ function reset(s) { // nová nebo načtená hra: zahodit vše, co patřilo té m
   signs.clear(); // popisky dvou ložisek u startu: co se tu dá těžit
   for (const [o, x, y] of STARTERS) { const t = label('ložisko: ' + ORES[o].name, '#e8e6e1'); t.position.set(x + 0.5, 4 + s._world.height(x, y), y + 0.5); signs.add(t); }
   pits.clear(); for (const k of s._pit) pits.add(k);
+  syncDepositPins(s);
   plumes.length = 0; smokeAt = plumeEmitAt = 0; if (smokeMesh) smokeMesh.count = 0;
 }
 function updateCamera() {
@@ -891,26 +1021,75 @@ export function frame3d() {
     if (ug) syncUnder(s);
   }
   under.visible = oreMesh.visible = ug;
-  if (!ug && arrowMesh && belts.length) {
-    const shift = ((G.time * 1.2) % 0.44) - 0.22;
-    for (let i = 0; i < belts.length; i++) {
-      const b = belts[i];
-      arrowMesh.setMatrixAt(i, M4.makeRotationY((-b.d * Math.PI) / 2).setPosition(b.x + 0.5 + DX[b.d] * shift, b._h + 0.16, b.y + 0.5 + DY[b.d] * shift));
+  const dist = 900 / c.z;
+  const isFar = dist > 140; // z velkého oddálení: zahodit mikroprvky, zobrazit globální značky ložisek
+  const isClose = dist < 75; // při velkém přiblížení: skrýt značky ložisek, plné detaily továrny
+  const maxViewDist = dist * 1.6 + 55;
+  const maxViewDistSq = maxViewDist * maxViewDist;
+
+  // 3D Značky dolů a ložisek (aktivní i volná s odhadem zásob) napříč světem
+  if (depositPins.children.length === 0) syncDepositPins(s);
+  if (isClose) {
+    depositPins.visible = false;
+  } else {
+    depositPins.visible = true;
+    const pinScale = Math.max(0.75, Math.min(3.6, dist * 0.014));
+    const maxPinDist = dist * 3.6 + 450;
+    for (const pin of depositPins.children) {
+      const pd = Math.hypot(pin.userData.x - c.x, pin.userData.y - c.y);
+      if (pd > maxPinDist) {
+        pin.visible = false;
+      } else {
+        pin.visible = true;
+        pin.scale.setScalar(pinScale);
+        if (pin.userData.gem) pin.userData.gem.rotation.y = G.time * 2.2;
+      }
     }
-    arrowMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // Dopravníky a položky: při velkém oddálení se mikroprvky zahodí, při přiblížení se ořezávají vzdálené
+  if (!ug && arrowMesh) {
+    if (isFar || !belts.length) {
+      arrowMesh.count = 0;
+      arrowMesh.instanceMatrix.needsUpdate = true;
+    } else {
+      const shift = ((G.time * 1.2) % 0.44) - 0.22;
+      let an = 0;
+      for (let i = 0; i < belts.length; i++) {
+        const b = belts[i];
+        if ((b.x - c.x) ** 2 + (b.y - c.y) ** 2 > maxViewDistSq) continue;
+        arrowMesh.setMatrixAt(an++, M4.makeRotationY((-b.d * Math.PI) / 2).setPosition(b.x + 0.5 + DX[b.d] * shift, b._h + 0.16, b.y + 0.5 + DY[b.d] * shift));
+      }
+      arrowMesh.count = an;
+      arrowMesh.instanceMatrix.needsUpdate = true;
+    }
   }
   let n = 0;
-  for (const b of belts) if (b.it) {
-    const hop = Math.sin(b.p * Math.PI) * 0.04;
-    itemMesh.setMatrixAt(n, M4.makeRotationY((-b.d * Math.PI) / 2).setPosition(b.x + 0.5 + DX[b.d] * (b.p - 0.5), 0.3 + (b._h ?? 0) + hop, b.y + 0.5 + DY[b.d] * (b.p - 0.5)));
-    itemMesh.setColorAt(n++, colorOf(ITEMS[b.it].col));
+  if (!isFar) {
+    for (const b of belts) if (b.it) {
+      if ((b.x - c.x) ** 2 + (b.y - c.y) ** 2 > maxViewDistSq) continue;
+      const hop = Math.sin(b.p * Math.PI) * 0.04;
+      itemMesh.setMatrixAt(n, M4.makeRotationY((-b.d * Math.PI) / 2).setPosition(b.x + 0.5 + DX[b.d] * (b.p - 0.5), 0.3 + (b._h ?? 0) + hop, b.y + 0.5 + DY[b.d] * (b.p - 0.5)));
+      itemMesh.setColorAt(n++, colorOf(ITEMS[b.it].col));
+    }
   }
   itemMesh.count = n; itemMesh.instanceMatrix.needsUpdate = true; if (itemMesh.instanceColor) itemMesh.instanceColor.needsUpdate = true;
-  const info = G.time - infoAt > 1, LS = Math.max(0.3, Math.min(3.2, (900 / c.z) * 0.022)); // LS: popisky mají na obrazovce pořád stejnou výšku
+  const info = G.time - infoAt > 1, LS = Math.max(0.3, Math.min(3.2, dist * 0.022)); // LS: popisky mají na obrazovce pořád stejnou výšku
   if (info) infoAt = G.time;
   for (const sp of signs.children) sizeLabel(sp, LS * 1.15);
   for (const [b, o] of objs) {
+    const d2 = (o.position.x - c.x) ** 2 + (o.position.z - c.y) ** 2;
+    if (d2 > maxViewDistSq) {
+      o.visible = false;
+      continue;
+    }
+    o.visible = true;
     const u = o.userData;
+    if (isFar) {
+      if (u.info) u.info.visible = false;
+      if (u.tag) u.tag.visible = false;
+      continue;
+    }
     if (u.led) {
       u.led.material = MAT.led[b.st] ?? MAT.led.idle;
       const ph = G.time * 4 + o.id * 0.7;
@@ -953,7 +1132,7 @@ export function frame3d() {
       }
       setLabel(o, 'tag', tagOf(b), '#ff8d98');
       if (info) setLabel(o, 'info', infoOf(s, b), '#e8e6e1');
-      if (u.info) { sizeLabel(u.info, LS); u.info.position.y = top + 0.8 + hh * 0.6; u.info.visible = 900 / c.z < 170; } // z velké dálky by se popisky slily
+      if (u.info) { sizeLabel(u.info, LS); u.info.position.y = top + 0.8 + hh * 0.6; u.info.visible = dist < 170; } // z velké dálky by se popisky slily
       if (u.tag) { sizeLabel(u.tag, LS); u.tag.position.y = top + 0.8 + hh * (u.info?.visible ? 1.8 : 0.6); }
     } else if (info && b.k === 'hub') {
       setLabel(o, 'sign', hubTitle(b));
@@ -961,8 +1140,10 @@ export function frame3d() {
     }
     if (b.cur && MODELS[b.model].kind === 'm_miner' && b.model !== 'quarry_hand') { const [cx, cy] = centerOf(b), a = -Math.atan2(b.cur[1] - cy, b.cur[0] - cx) - o.rotation.y; o.rotation.y += Math.atan2(Math.sin(a), Math.cos(a)) * 0.08; } // rypadlo se otáčí tam, kde zrovna kope
   }
-  smokeMesh.visible = !ug;
-  if (!ug && plumes.length) {
+  cars.visible = !isFar;
+  if (!isFar) syncCars(s);
+  smokeMesh.visible = !ug && !isFar;
+  if (!ug && !isFar && plumes.length) {
     let sn = 0;
     for (let i = plumes.length - 1; i >= 0; i--) {
       const p = plumes[i];
@@ -975,9 +1156,18 @@ export function frame3d() {
     }
     smokeMesh.count = sn; smokeMesh.instanceMatrix.needsUpdate = true; if (smokeMesh.instanceColor) smokeMesh.instanceColor.needsUpdate = true;
   } else if (smokeMesh.count) smokeMesh.count = 0;
-  syncCars(s);
   updateFx(s);
   renderer.render(scene, camera);
+}
+
+export function pickDeposit(cx, cy) {
+  if (!depositPins.visible) return null;
+  aim(cx, cy);
+  const hits = ray.intersectObjects(depositPins.children, true);
+  if (!hits.length) return null;
+  let o = hits[0].object;
+  while (o && !o.userData?.dep) o = o.parent;
+  return o ? o.userData.dep : null;
 }
 
 // ---------------------------------------------------------------- co je pod kurzorem

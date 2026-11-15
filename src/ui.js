@@ -5,7 +5,7 @@ import { MODELS, ITEMS, CHIPS, KINDS, CATS, UNIT, HW, HOUR, CARS, BUYERS, yieldO
 import { ROUTES, STARTS, RESEARCH, LANES, QUESTS, MISSIONS, PROC, MATS, FAB, canDo, econ } from '../data/routes.js';
 import { MACHINE_BUY } from '../data/hw/buy_machines.js';
 import { ORES, LEVEL_M, STARTERS } from './world.js';
-import { pick as pick3d, pickThing } from './world3d.js';
+import { pick as pick3d, pickThing, pickDeposit } from './world3d.js';
 import { icon, CAT_COL } from './sprites.js';
 import { sfx, audio } from './audio.js';
 
@@ -305,9 +305,15 @@ function bindInput() {
     if (drag && !drag.moved) {
       if (drag.btn === 2) { if (G.plan) { G.plan = null; modeUI(); } else if (G.tool) pick(G.tool); else select(null); }
       else if (drag.btn === 0 && !drag.rot && !G.tool) {
-        const th = pickThing(e.clientX, e.clientY);
-        if (th?.roof) { G.fly = { x: drag.a.fx, y: drag.a.fy, z: 24 }; toast('Jsi v hale. Když pohled oddálíš, střecha se zase zavře.'); } // klik na střechu = vstup do haly
-        else select(th?.b ?? sim.at(G.s, drag.a.x, drag.a.y) ?? null);
+        const dep = pickDeposit(e.clientX, e.clientY);
+        if (dep) {
+          G.fly = { x: dep.x, y: dep.y, z: 12 };
+          toast(`Ložisko ${dep.name}: ${dep.status_label}, odhad ${dep.reserves_est}`, 'ok', 4000);
+        } else {
+          const th = pickThing(e.clientX, e.clientY);
+          if (th?.roof) { G.fly = { x: drag.a.fx, y: drag.a.fy, z: 24 }; toast('Jsi v hale. Když pohled oddálíš, střecha se zase zavře.'); } // klik na střechu = vstup do haly
+          else select(th?.b ?? sim.at(G.s, drag.a.x, drag.a.y) ?? null);
+        }
       }
     }
     if (G.plan?.b && drag?.btn === 0 && !drag.rot && drag.moved && (G.plan.b.x !== G.plan.a.x || G.plan.b.y !== G.plan.a.y)) finishRoad(); // tažení od začátku ke konci funguje taky
@@ -318,7 +324,7 @@ function bindInput() {
   view.addEventListener('dblclick', (e) => { if (!G.tool) { const p = tileOf(e); G.fly = { x: p.fx, y: p.fy }; } }); // dvojklik: přelet na to místo
   view.addEventListener('wheel', (e) => { // přiblížení k místu pod kurzorem
     e.preventDefault();
-    const z0 = G.cam.z, z1 = clamp(z0 * (e.deltaY < 0 ? 1.15 : 1 / 1.15), 3, 120), p = tileOf(e), k = 1 - z0 / z1;
+    const z0 = G.cam.z, z1 = clamp(z0 * (e.deltaY < 0 ? 1.15 : 1 / 1.15), 0.75, 140), p = tileOf(e), k = 1 - z0 / z1;
     G.cam.x += (p.fx - G.cam.x) * k; G.cam.y += (p.fy - G.cam.y) * k; G.cam.z = z1; G.fly = null; G.moved = true;
   }, { passive: false });
   $('minimap').addEventListener('pointerdown', (e) => { const m = G.mini, r = e.currentTarget.getBoundingClientRect(); if (m) { G.fly = null; G.cam.x = m.bx - m.half + ((e.clientX - r.left) / 2) * m.step; G.cam.y = m.by - m.half + ((e.clientY - r.top) / 2) * m.step; } });

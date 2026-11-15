@@ -1,4 +1,7 @@
 // Otevřený svět: nekonečný terén a ložiska z deterministického šumu (stejný seed = stejný svět). 1 dlaždice = 1 m.
+import { WORLD_DEPOSITS } from './world_deposits.js';
+export { WORLD_DEPOSITS };
+
 export const CHUNK = 32;
 export const T = { WATER: 0, SAND: 1, GRASS: 2, DRY: 3, ROCK: 4 };
 export const LEVELS = 6, LEVEL_M = 50; // pod povrchem je šest pater po 50 m
@@ -30,6 +33,26 @@ export const REAL_DEPOSITS = [
   [1, 7, -69, 8, 'Provodín (křemenné písky)'],
 ];
 
+// Prostorový index ložisek pro rychlé sample(x, y) v O(1)
+const BUCKET = 64;
+const depositGrid = new Map();
+if (Array.isArray(WORLD_DEPOSITS)) {
+  for (const d of WORLD_DEPOSITS) {
+    const minBx = Math.floor((d.x - d.radius) / BUCKET);
+    const maxBx = Math.floor((d.x + d.radius) / BUCKET);
+    const minBy = Math.floor((d.y - d.radius) / BUCKET);
+    const maxBy = Math.floor((d.y + d.radius) / BUCKET);
+    for (let by = minBy; by <= maxBy; by++) {
+      for (let bx = minBx; bx <= maxBx; bx++) {
+        const k = `${bx},${by}`;
+        let list = depositGrid.get(k);
+        if (!list) depositGrid.set(k, (list = []));
+        list.push(d);
+      }
+    }
+  }
+}
+
 const hash = (x, y, s) => {
   let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1442695041)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -55,6 +78,15 @@ export function makeWorld(seed) {
     const t = e < 0.36 ? T.WATER : e < 0.39 ? T.SAND : e > 0.66 ? T.ROCK : m < 0.36 ? T.SAND : m < 0.52 ? T.DRY : T.GRASS;
     if (t === T.WATER || dist < 14) return t;
     for (const [o, sx, sy, r] of STARTERS) if (Math.hypot(x - sx, y - sy) < r - 2 + 3 * hash(x, y, seed + 5)) return t | (o << 3);
+    const bx = Math.floor(x / BUCKET), by = Math.floor(y / BUCKET);
+    const localDeps = depositGrid.get(`${bx},${by}`);
+    if (localDeps) {
+      for (const d of localDeps) {
+        if ((x - d.x) ** 2 + (y - d.y) ** 2 < (d.radius - 1) ** 2) {
+          return t | (d.ore_index << 3);
+        }
+      }
+    }
     for (const [o, sx, sy, r] of REAL_DEPOSITS) if (Math.hypot(x - sx, y - sy) < r - 1) return t | (o << 3);
     for (let o = 1; o < ORES.length; o++) {
       const d = ORES[o];
