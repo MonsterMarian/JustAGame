@@ -201,7 +201,9 @@ src/render.js, sprites.js   textury terénu, minimapa, ikony
 src/ui.js          panely a ovládání
 src/viewer3d.js    3D náhled stroje
 data/              katalog, trasy, rešerše
-tests/             node --test
+make_your_cpu/     Python simulační a herní engine
+DEVELOPMENT_LOG.md deník vývoje a přehled dalších kroků
+tests/             node --test a pytest
 tools/shot.cjs     snímky hry ze skrytého okna: electron tools/shot.cjs kroky.json složka
 tools/builder-include.cjs   pro electron-builder: přibalí doplňky three.js (složku examples)
 .github/workflows/ testy při pushi, .exe do Releases při tagu v*
